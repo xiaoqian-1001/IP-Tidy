@@ -9,13 +9,15 @@ set -euo pipefail
 #   curl -fsSL <raw_url> | bash -s -- uninstall  # 卸载
 # ──────────────────────────────────────────────
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[0;33m'; NC='\033[0m'
 BOLD='\033[1m'
+
+VERSION="v1.0.0"
 
 logo() {
     echo -e "${CYAN}${BOLD}"
     echo "   ╔══════════════════════════════╗"
-    echo "   ║       ASNIPtest              ║"
+    echo "   ║       ASNIPtest  ${VERSION}        ║"
     echo "   ║  ASN → masscan → CF 节点    ║"
     echo "   ╚══════════════════════════════╝"
     echo -e "${NC}"
@@ -47,15 +49,22 @@ if [ "$ACTION" = "update" ]; then
         warn "项目未安装，请先运行: bash install.sh"
         exit 1
     fi
-    info "更新项目..."
+    OLD_VER=$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo "未知")
+    info "当前版本: $OLD_VER → 检查更新..."
     cd "$PROJECT_DIR"
     git pull origin main --ff-only
-    info "重新编译 cf-scanner..."
-    cd "$PROJECT_DIR/cf-scanner"
-    if grep -q avx2 /proc/cpuinfo 2>/dev/null; then GOAMD=""; else GOAMD="GOAMD64=v2"; fi
-    env $GOAMD go build -o "$PROJECT_DIR/cf-scanner" main.go
+    NEW_VER=$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo "未知")
+    if [ "$OLD_VER" = "$NEW_VER" ]; then
+        info "已是最新版本 $NEW_VER"
+    else
+        info "${YELLOW}$OLD_VER → $NEW_VER${NC} 已更新"
+        info "重新编译 cf-scanner..."
+        cd "$PROJECT_DIR/cf-scanner"
+        if grep -q avx2 /proc/cpuinfo 2>/dev/null; then GOAMD=""; else GOAMD="GOAMD64=v2"; fi
+        env $GOAMD go build -o "$PROJECT_DIR/cf-scanner" main.go
+    fi
     echo ""
-    echo -e "${GREEN}✅ 更新完成${NC} → $PROJECT_DIR"
+    echo -e "${GREEN}✅ 版本 $NEW_VER${NC}"
     exit 0
 fi
 
