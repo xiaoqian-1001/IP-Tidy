@@ -12,13 +12,14 @@ curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/install.sh
 
 ```bash
 cd ~/ASNIPtest
-python3 run.py AS209242
+python3 run.py 209242
 ```
 
-多个 ASN：
+多个 ASN（逗号或空格分隔）：
 
 ```bash
-python3 run.py AS209242 AS3214 AS906
+python3 run.py 209242,3214
+python3 run.py 209242 3214
 ```
 
 ## 流程
