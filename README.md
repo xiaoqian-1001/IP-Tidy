@@ -8,6 +8,12 @@
 curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/install.sh | bash
 ```
 
+## 卸载
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/uninstall.sh | bash
+```
+
 ## 使用
 
 ```bash
