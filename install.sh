@@ -102,6 +102,7 @@ do_install() {
         fi
     }
     install_pkg masscan
+    install_pkg libpcap-dev
     install_pkg prips
     install_pkg python3
     install_pkg git
