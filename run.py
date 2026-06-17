@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 cf-ip-scanner — 从 ASN 拉取 IP，masscan 扫描，检测 Cloudflare 反代节点
 用法: python3 run.py AS209242 [AS3214 ...]
@@ -22,11 +23,25 @@ def detect_hardware():
 
 CPU_CORES, RAM_MB = detect_hardware()
 MASSCAN_RATE    = CPU_CORES * 1000
-CF_SCANNER_CONC = min(CPU_CORES * 100, 500)
+CF_SCANNER_CONC = max(200, min(CPU_CORES * 100, 500))
 API_CONCURRENT  = min(CPU_CORES * 16, 32)
 API_CHUNK       = 2000 if RAM_MB < 1024 else 5000
 
 print(f"  硬件: {CPU_CORES}核 {RAM_MB}MB → masscan {MASSCAN_RATE}pps cf-scanner {CF_SCANNER_CONC}c API {API_CONCURRENT}c")
+
+# ── 获取公网 IP (NAT/Docker 环境兼容) ──
+def get_public_ip():
+    """获取公网出口 IP，支持两个 API 互为备用"""
+    apis = [
+        ("https://api.ipify.org", 5),       # 国际，速度快
+        ("https://api-ipv4.ip.sb/ip", 5),   # 国内可用，仅 IPv4
+    ]
+    for url, timeout in apis:
+        try:
+            return urllib.request.urlopen(url, timeout=timeout).read().decode("utf-8").strip()
+        except Exception:
+            continue
+    return "127.0.0.1"
 
 BASE      = Path(__file__).parent.resolve()
 CF_SCANNER = BASE / "cf-scanner"
@@ -170,12 +185,9 @@ def output_csv(asns):
 
     print(f"\n  结果: {len(lines)} 条 → {output.name}")
 
-    # ── 提供下载链接 ──
+    # ── 提供下载链接 (支持 NAT/Docker 环境) ──
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
+        ip = get_public_ip()
         port = 8899
         print(f"\n  📥 下载链接 (临时, 按回车关闭):")
         print(f"  http://{ip}:{port}/{output.name}")
