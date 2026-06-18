@@ -9,7 +9,7 @@
 - [快速开始](#快速开始)
 - [安装](#安装)
   - [Linux / macOS](#linux--macos)
-  - [Windows（Docker）](#windowsdocker)
+  - [Windows（WSL2）](#windowswsl2)
 - [使用](#使用)
   - [命令行模式](#命令行模式)
   - [交互模式](#交互模式)
@@ -29,9 +29,14 @@ curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/install.sh
 cmtjd
 ```
 
-**Windows**（需先装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)）
+**Windows**（需先装 WSL2）
 ```powershell
-docker run -it --rm --cap-add=NET_RAW ghcr.io/e13815332/asniptest
+# PowerShell 管理员模式，装完重启
+wsl --install
+
+# 重启后进 Ubuntu 终端
+curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/install.sh | bash
+cmtjd
 ```
 
 ---
@@ -50,24 +55,30 @@ curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/install.sh
 
 > **手动安装**：如果不想用一键脚本，可以 clone 仓库后手动运行 `python3 run.py`。需自行安装 masscan 和 prips。
 
-### Windows（Docker）
+### Windows（WSL2）
 
-1. 下载安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-2. 打开 **PowerShell** 或 **CMD**，运行：
+Windows 10/11 自带 WSL2，装上就能用 Linux 环境：
+
+**第一步：安装 WSL2**
+
+PowerShell 管理员模式运行：
 
 ```powershell
-docker run -it --rm --cap-add=NET_RAW ghcr.io/e13815332/asniptest
+wsl --install
 ```
 
-> `--cap-add=NET_RAW` 是 masscan 发送原始网络包所必需的 Linux 内核权限，Docker 默认不开。
->
-> **如果拉取镜像失败**（网络问题），可以从源码本地构建：
-> ```powershell
-> git clone https://github.com/e13815332/ASNIPtest.git
-> cd ASNIPtest
-> docker build -t asniptest .
-> docker run -it --rm --cap-add=NET_RAW asniptest
-> ```
+系统会自动安装 Ubuntu + WSL2 内核。完成后**重启电脑**。
+
+**第二步：安装 ASNIPtest**
+
+重启后开始菜单会多一个「Ubuntu」应用，打开它，输入：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/install.sh | bash
+cmtjd
+```
+
+> WSL2 和真实 Linux 体验完全一致，masscan 原生运行无任何限制。
 
 ---
 
@@ -186,7 +197,7 @@ http://1.2.3.4:8899/output_AS209242_20260617_120000.csv
 | cf-scanner | CF 反代节点检测 | 内置，自动编译 |
 | [RIPEStat API](https://stat.ripe.net/) | ASN → CIDR | 免费公开，无需注册 |
 
-> `install.sh` 自动处理所有依赖。Docker 镜像已内置全部依赖。
+> `install.sh` 自动处理所有依赖。
 
 ---
 
@@ -196,4 +207,4 @@ http://1.2.3.4:8899/output_AS209242_20260617_120000.csv
 curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/uninstall.sh | bash
 ```
 
-这会删除 `cmtjd` 命令和 `~/ASNIPtest` 目录。Docker 用户直接删除镜像：`docker rmi ghcr.io/e13815332/asniptest`
+这会删除 `cmtjd` 命令和 `~/ASNIPtest` 目录。
