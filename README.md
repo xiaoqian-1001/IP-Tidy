@@ -75,7 +75,7 @@ wsl --install
 curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/install.sh | bash
 ```
 
-> WSL2 和真实 Linux 体验完全一致，masscan 原生运行无任何限制。
+> WSL2 默认使用桥接模式，正式测试时需调整为 NAT 模式才能正常使用 masscan。
 
 ---
 
@@ -112,7 +112,7 @@ cmtjd
 
 输入 ASN 后自动开始扫描。完成后自动提供 CSV 下载链接。
 
-> 如果运行在国内网络环境，扫描完成后还会自动测速（TCP 延迟 + CF 下载带宽）。海外环境跳过测速，直接输出结果。
+> 扫描完成后提供手动测速选项（TCP 延迟 + CF 下载带宽），用户可选择是否测速。
 
 ---
 
@@ -133,7 +133,7 @@ cmtjd
 ├──────────────────────┤
 │ 5. API 精筛          │  二次验证节点可用性（TLS + 数据中心 + 地区）
 ├──────────────────────┤
-│ 6. 测速（仅国内）     │  TCP 延迟 + CF 文件下载速度
+│ 6. 手动测速（可选）    │  TCP 延迟 + CF 文件下载速度
 ├──────────────────────┤
 │ 输出 CSV + 下载链接   │  临时 HTTP 服务提供文件下载
 └──────────────────────┘
@@ -195,6 +195,16 @@ http://1.2.3.4:8899/output_AS209242_20260617_120000.csv
 | [RIPEStat API](https://stat.ripe.net/) | ASN → CIDR | 免费公开，无需注册 |
 
 > `install.sh` 自动处理所有依赖。
+
+### 不支持的环境
+
+masscan 依赖 **raw socket**（CAP_NET_RAW），以下环境有限制：
+
+- ❌ NAT 容器（独角鲸/小鲸等，缺少 CAP_NET_RAW）
+- ❌ OpenVZ / LXC 未开启特权模式
+- ⚠️ WSL2 需切换为 NAT 网络模式（默认桥接不支持 raw socket）
+
+> 换到 KVM VPS 或物理机即可正常使用。
 
 ---
 
