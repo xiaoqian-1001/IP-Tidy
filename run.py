@@ -259,7 +259,34 @@ def cf_scan():
 
     if not os.access(CF_SCANNER, os.X_OK):
         os.chmod(CF_SCANNER, 0o755)
-    subprocess.run([str(CF_SCANNER), "-i", str(new_file), "-o", str(hits_file), "-c", str(CF_SCANNER_CONC)], check=True)
+
+    # 捕获 stdout 解析进度画进度条
+    proc = subprocess.Popen(
+        [str(CF_SCANNER), "-i", str(new_file), "-o", str(hits_file), "-c", str(CF_SCANNER_CONC)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+    )
+    bar_width = 30
+    last_pct = -1
+    for line in proc.stdout:
+        m = re.search(r"Scanned\s+\d+/(\d+)\s+\((\d+\.?\d*)%\)", line)
+        if m:
+            total_ips = int(m.group(1))
+            pct = min(float(m.group(2)), 100)
+            if abs(pct - last_pct) >= 0.5:
+                filled = int(bar_width * pct / 100)
+                bar = "█" * filled + "░" * (bar_width - filled)
+                sys.stderr.write(f"\r  [{bar}] {pct:.1f}%")
+                sys.stderr.flush()
+                last_pct = pct
+    proc.wait()
+    if proc.returncode == 0:
+        sys.stderr.write(f"\r  [{'█' * bar_width}] 100.0%\n")
+        sys.stderr.flush()
+    else:
+        sys.stderr.write("\n")
+        sys.stderr.flush()
+        raise subprocess.CalledProcessError(proc.returncode, proc.args)
+
     hits = sum(1 for _ in open(hits_file))
     print(f"  CF 节点: {hits}")
     return hits
@@ -354,11 +381,14 @@ def speed_test():
             f.write(",".join(parts) + "\n")
 
             tested += 1
-            if tested % 10 == 0 or tested == total:
-                sys.stderr.write(f"\r  {tested}/{total} | 延迟 {latency}ms  速度 {speed_mbps}Mbps  {'':20}")
-                sys.stderr.flush()
+            pct = tested / total * 100
+            bar_width = 30
+            filled = int(bar_width * pct / 100)
+            bar = "█" * filled + "░" * (bar_width - filled)
+            sys.stderr.write(f"\r  [{bar}] {pct:.1f}% | 延迟 {latency}ms  {speed_mbps}Mbps  {'':20}")
+            sys.stderr.flush()
 
-    sys.stderr.write(f"\r  测速完成: {total} 个节点{'':40}\n")
+    sys.stderr.write(f"\r  [{'█' * 30}] 100.0% | 测速完成: {total} 个节点{'':20}\n")
 
 # ── 输出 + 下载链接 ──
 def output_csv(asns):

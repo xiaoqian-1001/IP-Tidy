@@ -73,11 +73,15 @@ def main():
             done = i + len(chunk)
             rate = done / elapsed if elapsed > 0 else 0
             eta = (total - done) / rate if rate > 0 else 0
-            sys.stderr.write(f"\r{done}/{total} | 通过 {passed} | {rate:.1f}/s | ETA {eta/60:.1f}m   ")
+            pct = done / total * 100
+            bar_width = 30
+            filled = int(bar_width * pct / 100)
+            bar = "█" * filled + "░" * (bar_width - filled)
+            sys.stderr.write(f"\r  [{bar}] {pct:.1f}% | 通过 {passed} | {rate:.1f}/s | ETA {eta/60:.1f}m   ")
             sys.stderr.flush()
 
     elapsed = int(time.time() - start)
-    sys.stderr.write(f"\n完成 | {elapsed//60}min | 通过 {passed}/{total}\n")
+    sys.stderr.write(f"\r  [{'█' * 30}] 100.0% | 通过 {passed}/{total} | {elapsed//60}min{'':20}\n")
 
 if __name__ == "__main__":
     main()
