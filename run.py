@@ -25,12 +25,11 @@ def detect_hardware():
 # ── 智能 masscan 速率探测 ──
 def probe_masscan_rate():
     """实测网卡发包上限，返回最优速率"""
-    # 找外网网卡
     iface = None
     try:
         r = subprocess.run(["ip", "-4", "route", "get", "1.1.1.1"],
                            capture_output=True, text=True, timeout=5)
-        m = re.search(r"dev\s+(\S+)", r.stdout)
+        m = __import__("re").search(r"dev\s+(\S+)", r.stdout)
         if m:
             iface = m.group(1)
     except Exception:
@@ -41,11 +40,9 @@ def probe_masscan_rate():
                 iface = name
                 break
     if not iface:
-        # 回退 CPU 估算
         cores = multiprocessing.cpu_count()
         return max(1000, min(cores * 1000, 16000))
 
-    # 从脚本参数取 CIDR 做样本；兜底用公共网段
     cidrs = [a for a in sys.argv[1:] if not a.startswith("--") and "/" in a]
     if not cidrs:
         cidrs = ["1.1.1.0/24", "8.8.8.0/24", "9.9.9.0/24"]
@@ -226,8 +223,8 @@ def fetch_prefixes(asns):
 
 # ── Step 2: CIDR → IP ──
 def expand_ips():
-    ip_file = BASE / "ips.txt"
-    total = 0
+    """Expand CIDR ranges to individual IPs (kept for compatibility; masscan now reads cidrs.txt directly)"""
+    ip_file = BASE / "cidrs.txt"
     with open(ip_file, "w") as out:
         with open(BASE / "cidrs.txt") as f:
             for cidr in f:
@@ -273,7 +270,7 @@ def run_masscan(ports_str=None):
     if not ports or ports == ",":
         ports = DEFAULT_PORTS
     result_file = BASE / "masscan_result.txt"
-    ip_file = BASE / "ips.txt"
+    ip_file = BASE / "cidrs.txt"
 
     # 清理上次残留（可能 root 所有，普通用户改不了 → sudo rm）
     if result_file.exists():
@@ -589,10 +586,9 @@ if __name__ == "__main__":
 
     steps = [
         ("1/6 ASN→CIDR", lambda: fetch_prefixes(asns)),
-        ("2/6 CIDR→IP",  expand_ips),
-        ("3/6 masscan",   lambda: run_masscan(scan_ports)),
-        ("4/6 cf-scanner", cf_scan),
-        ("5/6 API精筛",   api_verify),
+        ("2/6 masscan",   lambda: run_masscan(scan_ports)),
+        ("3/6 cf-scanner", cf_scan),
+        ("4/6 API精筛",   api_verify),
     ]
 
     # 测速：让用户选择
