@@ -20,4 +20,4 @@ if [ -f "$WRAPPER" ]; then
 fi
 
 echo ""
-echo -e "${GREEN}✅ 卸载完成${NC}"
+echo -e "${GREEN}[OK] 卸载完成${NC}"
