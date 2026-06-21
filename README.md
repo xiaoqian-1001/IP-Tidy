@@ -127,9 +127,9 @@ cmtjd
 ├──────────────────────┤
 │ 2. masscan 端口扫描   │  高速 SYN 扫描（CIDR 直接传入，跳过 prips 展开）
 ├──────────────────────┤
-│ 3. cf-scanner 粗筛   │  TLS 握手检测，过滤 Cloudflare 反代节点
+│ 3. cf-scanner 粗筛   │  TLS 握手检测，命中 Cloudflare 反代节点
 ├──────────────────────┤
-│ 4. API 精筛          │  二次验证节点可用性（TLS + 数据中心 + 地区）
+│ 4. API 精筛          │  api.090227.xyz/check 二次验证（TLS + 数据中心 + 地区）
 ├──────────────────────┤
 │ 5. 手动测速（可选）    │  TCP 延迟 + CF 文件下载速度
 ├──────────────────────┤
@@ -209,3 +209,9 @@ curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/uninstall.
 ```
 
 这会删除 `cmtjd` 命令和 `~/ASNIPtest` 目录。
+
+---
+
+## 鸣谢
+
+- [**cmliu**](https://github.com/cmliu) — 提供 [CF-Workers-CheckProxyIP](https://github.com/cmliu/CF-Workers-CheckProxyIP) 公共 API 接口 (`api.090227.xyz/check`)，用于节点二次验证。
