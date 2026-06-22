@@ -294,6 +294,8 @@ def step_api_verify(cfg: ScannerConfig) -> int:
 
     if not hits_file.exists() or hits_file.stat().st_size == 0:
         print("  无 CF 节点，跳过")
+        if verified_file.exists():
+            verified_file.unlink()
         return 0
 
     subprocess.run([
@@ -570,6 +572,13 @@ def main() -> None:
     ]
     if do_speed:
         steps.append((f"{total_steps}. 测速", lambda: step_speed_test(cfg)))
+
+    # 清理上次运行的中间文件，防止残留数据污染
+    for stale in ("cidrs.txt", "masscan_result.txt",
+                  "cf_hits.txt", "verified.txt"):
+        p = BASE / stale
+        if p.exists():
+            p.unlink()
 
     for label, fn in steps:
         print(f"\n  [{label}]")
