@@ -71,56 +71,26 @@ func isCloudflareProxy(ip string, client *http.Client) (bool, string, string) {
 		}
 		return true, reason, target
 	}
-
 	return false, "", target
 }
 
-func countLines(path string) (int, error) {
+func loadLines(path string) ([]string, int, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
-	count := 0
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		if scanner.Text() != "" {
-			count++
-		}
-	}
-	return count, scanner.Err()
-}
-
-func streamLines(ctx context.Context, path string, skip int, out chan<- string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
+		return nil, 0, err
 	}
 	defer f.Close()
 
+	var lines []string
 	scanner := bufio.NewScanner(f)
-	lineNum := 0
 	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
 		line := scanner.Text()
 		if line == "" {
 			continue
 		}
-		lineNum++
-		if lineNum <= skip {
-			continue
-		}
-		select {
-		case out <- line:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+		lines = append(lines, line)
 	}
-	return scanner.Err()
+	return lines, len(lines), scanner.Err()
 }
 
 func writeState(path string, inputFile string, scanned int) {
@@ -140,29 +110,32 @@ func main() {
 	}
 	fmt.Printf("Output: %s\n", *outputFile)
 
-	fmt.Print("Counting IPs... ")
-	total, err := countLines(*inputFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "\nFailed to read %s: %v\n", *inputFile, err)
-		os.Exit(1)
-	}
-	fmt.Printf("%d\n", total)
-
 	skip := 0
 	if data, err := os.ReadFile(*stateFile); err == nil {
 		parts := strings.SplitN(strings.TrimSpace(string(data)), "\t", 2)
 		if len(parts) == 2 && parts[0] == *inputFile {
 			fmt.Sscanf(parts[1], "%d", &skip)
-			if skip > 0 && skip < total {
-				fmt.Printf("Resuming from line %d (%.1f%% done)\n",
-					skip, float64(skip)/float64(total)*100)
-			} else {
-				skip = 0
-			}
-		} else {
-			fmt.Printf("State file is for %q, not %q - starting fresh\n",
-				parts[0], *inputFile)
 		}
+	}
+
+	fmt.Print("Loading IPs... ")
+	allLines, total, err := loadLines(*inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\nFailed to read %s: %v\n", *inputFile, err)
+		os.Exit(1)
+	}
+	fmt.Printf("%d total\n", total)
+	if skip > total {
+		skip = 0
+	}
+	if skip > 0 {
+		fmt.Printf("Resuming from line %d (%.1f%% done)\n",
+			skip, float64(skip)/float64(total)*100)
+	}
+
+	feedLines := allLines
+	if skip > 0 && skip < len(allLines) {
+		feedLines = allLines[skip:]
 	}
 
 	transport := &http.Transport{
@@ -208,16 +181,17 @@ func main() {
 	jobs := make(chan string, *concurrency*2)
 	results := make(chan result, *concurrency)
 
+	sharedClient := &http.Client{
+		Transport: transport,
+		Timeout:   *totalTO,
+	}
+
 	for i := 0; i < *concurrency; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			client := &http.Client{
-				Transport: transport,
-				Timeout:   *totalTO,
-			}
 			for ip := range jobs {
-				ok, reason, target := isCloudflareProxy(ip, client)
+				ok, reason, target := isCloudflareProxy(ip, sharedClient)
 				n := scanned.Add(1)
 				if ok {
 					select {
@@ -271,8 +245,13 @@ func main() {
 	}()
 
 	go func() {
-		if err := streamLines(ctx, *inputFile, skip, jobs); err != nil && err != context.Canceled {
-			fmt.Fprintf(os.Stderr, "\nError reading input: %v\n", err)
+		total = len(feedLines) + skip
+		for _, line := range feedLines {
+			select {
+			case jobs <- line:
+			case <-ctx.Done():
+				break
+			}
 		}
 		close(jobs)
 	}()

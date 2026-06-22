@@ -9,7 +9,6 @@ import os
 import re
 import time
 import json
-import signal
 import socket
 import urllib.request
 import subprocess
@@ -17,12 +16,11 @@ import multiprocessing
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from lib.utils import (
-    render_progress,
     write_progress,
     write_progress_done,
-    progress_reader,
     get_public_ip,
     get_lan_ip,
     detect_isp,
@@ -283,10 +281,20 @@ def cf_scan() -> int:
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
     )
 
-    progress_reader(proc.stdout, 0, "cf-scanner")
+    last_pct = -1
+    pat_pct = re.compile(r"(\d+\.?\d*)%")
+    for line in proc.stdout:
+        m = pat_pct.search(line)
+        if m:
+            pct = min(float(m.group(1)), 100)
+            if abs(pct - last_pct) >= 0.5:
+                write_progress(pct)
+                last_pct = pct
     proc.wait()
 
-    if proc.returncode != 0:
+    if proc.returncode == 0:
+        write_progress_done()
+    else:
         sys.stderr.write("\n")
         sys.stderr.flush()
         raise subprocess.CalledProcessError(proc.returncode, proc.args)
@@ -320,7 +328,7 @@ def api_verify() -> int:
 
 
 def speed_test() -> None:
-    """Step 5: 手动测速 (TCP 延迟 + CF 下载带宽)"""
+    """Step 5: 测速 (TCP 延迟 + CF 下载带宽)  -- 并行执行"""
     verified_file = BASE / "verified.txt"
     if not verified_file.exists() or verified_file.stat().st_size == 0:
         print("  无节点，跳过")
@@ -343,27 +351,46 @@ def speed_test() -> None:
     total = len(entries)
     print(f"  节点数: {total}")
 
-    with open(verified_file, "w") as f:
-        f.write(header + "\n")
+    updated: list[str] = [header]
+
+    with ThreadPoolExecutor(max_workers=min(total, API_CONCURRENT)) as ex:
+        future_map = {}
         for idx, entry in enumerate(entries):
             parts = entry.split(",")
             if len(parts) < 9:
                 continue
-            ip, port = parts[0], parts[1]
+            future = ex.submit(_measure_single, parts, idx)
+            future_map[future] = (idx, parts)
 
-            latency = _measure_tcp_latency(ip, int(port))
-            speed_mbps = _measure_cf_download(ip, port) if latency > 0 else 0
-
-            parts[6] = str(latency)
-            parts[7] = str(speed_mbps)
-            f.write(",".join(parts) + "\n")
-
-            pct = (idx + 1) / total * 100
+        completed = 0
+        for future in as_completed(future_map):
+            idx, parts = future_map[future]
+            new_parts, latency, speed_mbps = future.result()
+            updated.append((",".join(new_parts), idx))
+            completed += 1
+            pct = completed / total * 100
             extra = f" | 延迟 {latency}ms  {speed_mbps}Mbps"
-            sys.stderr.write(f"\r{render_progress(pct, extra)}")
-            sys.stderr.flush()
+            write_progress(pct, extra)
 
-    sys.stderr.write(f"\r  [{'=' * 30}] 100.0% | 测速完成: {total} 个节点\n")
+    updated.sort(key=lambda x: x[1])
+    with open(verified_file, "w") as f:
+        for row in updated:
+            if isinstance(row, str):
+                f.write(row + "\n")
+            else:
+                f.write(row[0] + "\n")
+
+    write_progress_done(f" | 测速完成: {total} 个节点")
+
+
+def _measure_single(parts: list[str], _idx: int) -> tuple[list[str], int, float]:
+    """测量单个节点延迟和速度（供线程池调用）"""
+    ip, port = parts[0], parts[1]
+    latency = _measure_tcp_latency(ip, int(port))
+    speed_mbps = _measure_cf_download(ip, port) if latency > 0 else 0
+    parts[6] = str(latency)
+    parts[7] = str(speed_mbps)
+    return parts, latency, speed_mbps
 
 
 def _measure_tcp_latency(ip: str, port: int) -> int:
@@ -498,19 +525,16 @@ def _normalize_asns(raw: str) -> list[str]:
     return asns
 
 
-def _parse_port_arg(args: list[str]) -> tuple[str, bool]:
-    """从命令行参数中解析 -p 端口参数，返回 (ports, had_custom)"""
-    custom = False
-    ports = DEFAULT_PORTS
+def _parse_port_arg(args: list[str]) -> str:
+    """从命令行参数中解析 -p 端口参数"""
     for idx, arg in enumerate(args):
         if arg == "-p" and idx + 1 < len(args):
             parsed = parse_ports(args[idx + 1])
             if parsed:
-                ports = parsed
-                custom = True
-                print(f"  自定义端口: {ports}")
+                print(f"  自定义端口: {parsed}")
+                return parsed
             break
-    return ports, custom
+    return DEFAULT_PORTS
 
 
 def main() -> None:
@@ -540,7 +564,7 @@ def main() -> None:
                 scan_ports = parsed
                 print(f"  扫描端口: {scan_ports}")
     else:
-        scan_ports, _ = _parse_port_arg(args)
+        scan_ports = _parse_port_arg(args)
 
     steps: list[tuple[str, Callable[[], object]]] = [
         ("1/6 ASN->CIDR",    lambda: fetch_prefixes(asns)),

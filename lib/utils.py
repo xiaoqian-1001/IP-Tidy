@@ -12,7 +12,8 @@ import subprocess
 import urllib.request
 import json
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 BAR_WIDTH = 30
@@ -38,60 +39,58 @@ def write_progress_done(extra: str = "") -> None:
     sys.stderr.flush()
 
 
-def progress_reader(stream, total: int, name: str = "Scanned",
-                    done_callback: Optional[Callable] = None) -> None:
-    """从流中读取 masscan/cf-scanner 进度输出并渲染进度条"""
-    last_pct = -1
-    patterns = [
-        re.compile(r"(\d+\.?\d*)%\s*done"),
-        re.compile(r"Scanned\s+\d+/(\d+)\s+\((\d+\.?\d*)%\)"),
-    ]
-    for line in stream:
-        for pat in patterns:
-            m = pat.search(line)
-            if m:
-                pct = min(float(m.group(1) if "%" in pat.pattern else m.group(2)), 100)
-                if abs(pct - last_pct) >= 0.5:
-                    write_progress(pct)
-                    last_pct = pct
-                break
-    if done_callback:
-        done_callback()
-    else:
-        write_progress_done()
+def _fetch_http_ip(url: str, timeout_sec: int) -> Optional[str]:
+    """单次 HTTP 公网 IP 查询"""
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+            return resp.read().decode("utf-8").strip()
+    except Exception:
+        return None
+
+
+def _fetch_dns_ip(cmd: list[str], timeout_sec: int) -> Optional[str]:
+    """单次 DNS 方式公网 IP 查询"""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec)
+        out = r.stdout.strip().strip('"')
+        if out and "." in out and out.count(".") == 3:
+            parts = out.split(".")
+            if all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+                return out
+    except Exception:
+        pass
+    return None
 
 
 def get_public_ip() -> str:
-    """获取公网出口 IP，HTTP API + DNS 多重兜底"""
-    apis = [
+    """获取公网出口 IP（HTTP API + DNS 多重兜底，并发请求取最快结果）"""
+    http_apis = [
         ("https://api.ipify.org", 5),
         ("https://api-ipv4.ip.sb/ip", 5),
         ("https://ifconfig.me/ip", 5),
         ("https://icanhazip.com", 5),
     ]
-    for url, timeout_sec in apis:
-        try:
-            req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
-                return resp.read().decode("utf-8").strip()
-        except Exception:
-            continue
-
     dns_queries = [
         (["dig", "+short", "myip.opendns.com", "@resolver1.opendns.com"], 5),
         (["dig", "TXT", "+short", "o-o.myaddr.l.google.com", "@ns1.google.com"], 5),
         (["dig", "+short", "whoami.akamai.net", "@ns1-1.akamaitech.net"], 5),
     ]
-    for cmd, timeout_sec in dns_queries:
-        try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec)
-            out = r.stdout.strip().strip('"')
-            if out and "." in out and out.count(".") == 3:
-                parts = out.split(".")
-                if all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
-                    return out
-        except Exception:
-            continue
+
+    with ThreadPoolExecutor(max_workers=len(http_apis)) as ex:
+        futures = {
+            ex.submit(_fetch_http_ip, url, timeout): url
+            for url, timeout in http_apis
+        }
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                return result
+
+    for cmd, timeout in dns_queries:
+        result = _fetch_dns_ip(cmd, timeout)
+        if result:
+            return result
     return "127.0.0.1"
 
 
