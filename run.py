@@ -590,7 +590,8 @@ if __name__ == "__main__":
                 print(f"\n  请在终端运行: cd {BASE} && python3 run.py\n")
                 sys.exit(0)
         if not raw:
-            print("用法: python3 run.py AS209242 或 python3 run.py AS209242,AS3214")
+            print("用法: cmtjd AS209242")
+            print("  ssh 断线不杀: screen -S scan → cmtjd AS209242 → Ctrl+A D")
             sys.exit(1)
         asns = [a.strip().replace("AS", "").replace("as", "") for a in raw.replace("，", ",").split(",") if a.strip()]
     else:
@@ -609,6 +610,7 @@ if __name__ == "__main__":
         asns = [a.strip().replace("AS", "").replace("as", "") for a in raw.replace("，", ",").split(",") if a.strip()]
         if not asns:
             print("用法: cmtjd AS209242 或 cmtjd AS209242 -p 8443")
+            print("  ssh 断线不杀: screen -S scan → cmtjd AS209242 → Ctrl+A D")
             sys.exit(1)
     print(f"\n  ASN: {', '.join(f'AS{a}' for a in asns)}\n")
 
@@ -660,4 +662,8 @@ if __name__ == "__main__":
             sys.exit(1)
 
     output_csv(asns)
+    print()
+    print("  ───")
+    print("  SSH 断线不杀: screen -S scan → cmtjd AS209242 → Ctrl+A D")
+    print("  恢复: screen -r scan")
     print("\n✓ 完成\n")
