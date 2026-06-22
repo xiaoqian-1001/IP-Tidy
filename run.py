@@ -37,10 +37,18 @@ BASE = Path(__file__).parent.resolve()
 CF_SCANNER = BASE / "cf-scanner"
 VERIFY_PY = BASE / "verify.py"
 API_URL = "https://api.090227.xyz/check"
-WIDE_PORTS = "22,80,443,8080,8443,2053,2083,2087,2096,13000-14000,20000-45000"
-_RANDOM_POOL = ["22","80","443","8080","8443","2053","2083","2087","2096",
-                "8081","8880","2095","5353","7000","9000","10000","12000",
-                "14000","16000","18000","20000","25000","30000","35000","40000","45000"]
+WIDE_PORTS = "912,22,80,443,8080,8443,2053,2083,2087,2096,10000-65535"
+_MASSCAN_BATCH = 5000
+
+# (start, end, weight) — 20000-60000 权重 10 倍
+_RANDOM_ZONES: list[tuple[int, int, int]] = [
+    (22, 22, 2), (80, 80, 2), (443, 443, 2),
+    (912, 912, 2), (2053, 2053, 2),
+    (2083, 2087, 2), (8080, 8080, 2), (8443, 8443, 2),
+    (10000, 19999, 2),
+    (20000, 60000, 10),
+    (60001, 65535, 3),
+]
 
 _SPEED_TESTS = [
     ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=1048576",   1,   "1MB"),
@@ -49,10 +57,97 @@ _SPEED_TESTS = [
     ("cloudflare.cdn.openbsd.org", "https://cloudflare.cdn.openbsd.org/pub/OpenBSD/7.3/src.tar.gz", 0, "CDN"),
 ]
 
+
 def _random_ports(n: int = 5) -> str:
-    chosen = random.sample(_RANDOM_POOL, min(len(_RANDOM_POOL), n))
-    random.shuffle(chosen)
-    return ",".join(chosen)
+    zones = [z[:2] for z in _RANDOM_ZONES]
+    weights = [z[2] for z in _RANDOM_ZONES]
+    seen: set[int] = set()
+    result: list[str] = []
+    attempts = 0
+    while len(result) < n and attempts < n * 20:
+        start, end = random.choices(zones, weights=weights, k=1)[0]
+        port = random.randint(start, end)
+        if port not in seen:
+            seen.add(port)
+            result.append(str(port))
+        attempts += 1
+    random.shuffle(result)
+    return ",".join(result)
+
+
+def _port_count(port_str: str) -> int:
+    total = 0
+    for part in port_str.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            a, b = part.split("-", 1)
+            try:
+                pa, pb = int(a), int(b)
+                if 1 <= pa <= pb <= 65535:
+                    total += pb - pa + 1
+            except ValueError:
+                pass
+        elif part.isdigit():
+            p = int(part)
+            if 1 <= p <= 65535:
+                total += 1
+    return total
+
+
+def _split_port_batches(port_str: str) -> list[str]:
+    segments = [s.strip() for s in port_str.split(",") if s.strip()]
+    batches: list[str] = []
+    current: list[str] = []
+    cur = 0
+    for seg in segments:
+        n = 1
+        if "-" in seg:
+            try:
+                a, b = seg.split("-", 1)
+                n = int(b) - int(a) + 1
+            except ValueError:
+                pass
+        if cur + n > _MASSCAN_BATCH and current:
+            batches.append(",".join(current))
+            current = []
+            cur = 0
+        current.append(seg)
+        cur += n
+    if current:
+        batches.append(",".join(current))
+    return batches if len(batches) > 1 else [port_str]
+
+
+def _get_system_load() -> tuple[float, int]:
+    cpu = 0.0
+    try:
+        with open("/proc/loadavg") as f:
+            cpu = float(f.read().split()[0])
+    except Exception:
+        pass
+    mem = 512
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if "MemAvailable" in line:
+                    mem = int(line.split()[1]) // 1024
+                    break
+    except Exception:
+        pass
+    return cpu, mem
+
+
+def _adjust_concurrency(base: int, cores: int) -> int:
+    load, mem = _get_system_load()
+    if load > cores:
+        base = max(50, base // 2)
+    if mem < 200:
+        base = max(50, base // 2)
+    elif mem < 500:
+        base = max(50, int(base * 0.7))
+    return base
 
 _version = "unknown"
 try:
@@ -225,90 +320,99 @@ def step_masscan(cfg: ScannerConfig) -> int:
         print("  [FAIL] cidrs.txt 为空，跳过 masscan")
         return 0
 
-    result_file = BASE / "masscan_result.xml"
-    if result_file.exists():
-        if os.geteuid() == 0:
-            result_file.unlink()
-        else:
-            subprocess.run(["sudo", "rm", "-f", str(result_file)], check=False)
+    xml_file = BASE / "masscan_result.xml"
+    if xml_file.exists():
+        try:
+            xml_file.unlink()
+        except OSError:
+            pass
 
-    sudo = [] if os.geteuid() == 0 else ["sudo"]
-    cmd = sudo + [
-        "masscan", "-iL", str(ip_file),
-        "-p", cfg.scan_ports,
-        "--rate", str(cfg.masscan_rate),
-        "-oX", str(result_file),
-        "--wait", "5",
-    ]
+    batches = _split_port_batches(cfg.scan_ports)
+    total_ports = _port_count(cfg.scan_ports)
+    if len(batches) > 1:
+        print(f"  端口总数 {total_ports} -> {len(batches)} 批次扫描 (~{_MASSCAN_BATCH}/批)")
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.PIPE, text=True, bufsize=1)
-    stderr_lines: list[str] = []
-    t0 = time.time()
-    for line in proc.stderr:
-        stderr_lines.append(line)
-        m = re.search(r"(\d+\.?\d*)%\s*done", line)
-        if m:
-            pct = min(float(m.group(1)), 100)
-            elapsed = time.time() - t0
-            eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
-            extra = f" | ETA {int(eta // 60)}m {int(eta % 60)}s" if pct > 0.5 else ""
-            write_progress(pct, extra)
-    proc.wait()
+    all_open: list[str] = []
+    batch_total = len(batches)
 
-    if proc.returncode != 0:
-        sys.stderr.write("\n")
-        sys.stderr.flush()
-        err = "".join(stderr_lines).lower()
-        if "permission denied" in err or "init: failed" in err:
-            print("  [FAIL] masscan 需要 raw socket 权限，NAT 容器/部分 VPS 不支持")
-            print("  -> 请换到 KVM VPS 或物理机运行")
-        raise subprocess.CalledProcessError(
-            proc.returncode, cmd,
-            output=None,
-            stderr="".join(stderr_lines))
+    for bi, batch_ports in enumerate(batches):
+        batch_xml = xml_file if batch_total == 1 else BASE / f"masscan_batch_{bi + 1}.xml"
 
-    write_progress_done()
+        sudo = [] if os.geteuid() == 0 else ["sudo"]
+        cmd = sudo + [
+            "masscan", "-iL", str(ip_file),
+            "-p", batch_ports,
+            "--rate", str(cfg.masscan_rate),
+            "-oX", str(batch_xml),
+            "--wait", "5",
+        ]
 
-    if os.geteuid() != 0:
-        subprocess.run(["sudo", "chown",
-                        f"{os.getuid()}:{os.getgid()}", str(result_file)], check=False)
+        prefix = f"[{bi + 1}/{batch_total}] " if batch_total > 1 else ""
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.PIPE, text=True, bufsize=1)
+        stderr_lines: list[str] = []
+        t0 = time.time()
+        for line in proc.stderr:
+            stderr_lines.append(line)
+            m = re.search(r"(\d+\.?\d*)%\s*done", line)
+            if m:
+                pct = min(float(m.group(1)), 100)
+                elapsed = time.time() - t0
+                eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
+                extra = f" | ETA {int(eta // 60)}m {int(eta % 60)}s" if pct > 0.5 else ""
+                write_progress(pct, prefix + extra)
+        proc.wait()
 
-    open_ports: list[str] = []
-    ttl_count = 0
-    try:
-        tree = ET.parse(result_file)
-        root = tree.getroot()
-        for host in root.findall("host"):
-            addr = host.find("address")
-            if addr is None:
-                continue
-            ip = addr.get("addr", "")
-            ports_elem = host.find("ports")
-            if ports_elem is None:
-                continue
-            for port in ports_elem.findall("port"):
-                state = port.find("state")
-                if state is None:
+        if proc.returncode != 0:
+            sys.stderr.write("\n")
+            sys.stderr.flush()
+            err = "".join(stderr_lines).lower()
+            if "permission denied" in err or "init: failed" in err:
+                print("  [FAIL] masscan 需要 raw socket 权限")
+            raise subprocess.CalledProcessError(
+                proc.returncode, cmd, output=None,
+                stderr="".join(stderr_lines))
+
+        write_progress_done(prefix)
+
+        if os.geteuid() != 0:
+            subprocess.run(["sudo", "chown",
+                            f"{os.getuid()}:{os.getgid()}", str(batch_xml)], check=False)
+
+        # Parse batch XML
+        try:
+            tree = ET.parse(batch_xml)
+            for host in tree.getroot().findall("host"):
+                addr = host.find("address")
+                if addr is None:
                     continue
-                if state.get("state") != "open":
+                ip = addr.get("addr", "")
+                ports_elem = host.find("ports")
+                if ports_elem is None:
                     continue
-                reason = state.get("reason", "")
-                if reason not in ("syn-ack", "synack"):
-                    continue
-                ttl = state.get("reason_ttl", "0")
-                portid = port.get("portid", "")
-                if ip and portid:
-                    open_ports.append(f"{ip}:{portid}")
-                    ttl_count += 1
-    except ET.ParseError:
-        print("  [WARN] XML 解析失败，尝试文本回退")
-        pass
+                for port in ports_elem.findall("port"):
+                    state = port.find("state")
+                    if state is None or state.get("state") != "open":
+                        continue
+                    if state.get("reason", "") not in ("syn-ack", "synack"):
+                        continue
+                    portid = port.get("portid", "")
+                    if ip and portid:
+                        all_open.append(f"{ip}:{portid}")
+        except ET.ParseError:
+            pass
+
+        # Cleanup batch XML if multi-batch
+        if batch_total > 1:
+            try:
+                batch_xml.unlink()
+            except OSError:
+                pass
 
     text_file = BASE / "masscan_result.txt"
-    text_file.write_text("\n".join(open_ports) + "\n")
-    print(f"  开放端口: {len(open_ports)} (syn-ack 确认)")
-    return len(open_ports)
+    text_file.write_text("\n".join(all_open) + "\n")
+    print(f"  开放端口: {len(all_open)} (syn-ack 确认)")
+    return len(all_open)
 
 
 def step_cf_scan(cfg: ScannerConfig) -> int:
@@ -320,6 +424,11 @@ def step_cf_scan(cfg: ScannerConfig) -> int:
         return 0
 
     ensure_cf_scanner()
+
+    adj = _adjust_concurrency(cfg.cf_concurrency, cfg.cpu)
+    if adj != cfg.cf_concurrency:
+        print(f"  cf-scanner 并发: {cfg.cf_concurrency} -> {adj} (系统负载)")
+        cfg.cf_concurrency = adj
 
     proc = subprocess.Popen(
         [str(CF_SCANNER), "-i", str(input_file), "-o", str(hits_file),
@@ -362,6 +471,11 @@ def step_api_verify(cfg: ScannerConfig) -> int:
             verified_file.unlink()
         return 0
 
+    adj = _adjust_concurrency(cfg.api_concurrency, cfg.cpu)
+    if adj != cfg.api_concurrency:
+        print(f"  API 并发: {cfg.api_concurrency} -> {adj} (系统负载)")
+        cfg.api_concurrency = adj
+
     subprocess.run([
         sys.executable, str(VERIFY_PY),
         "--input", str(hits_file),
@@ -382,6 +496,11 @@ def step_speed_test(cfg: ScannerConfig) -> None:
     if not verified_file.exists() or verified_file.stat().st_size == 0:
         print("  无节点，跳过")
         return
+
+    adj = _adjust_concurrency(cfg.api_concurrency, cfg.cpu)
+    if adj != cfg.api_concurrency:
+        print(f"  测速并发: {cfg.api_concurrency} -> {adj} (系统负载)")
+        cfg.api_concurrency = adj
 
     with open(verified_file) as f:
         lines = [l.strip() for l in f
@@ -628,8 +747,7 @@ def main() -> None:
         cfg.scan_ports = WIDE_PORTS
         if not a.rate:
             cfg.masscan_rate = max(500, cfg.masscan_rate // 2)
-        port_count = len(cfg.scan_ports.split(","))
-        print(f"  宽端口模式: {port_count} 段 ({cfg.masscan_rate} pps)")
+        print(f"  宽端口模式: {_port_count(cfg.scan_ports)} 端口 ({cfg.masscan_rate} pps)")
     elif a.random:
         cfg.scan_ports = _random_ports()
         print(f"  随机端口: {cfg.scan_ports}")
@@ -643,8 +761,7 @@ def main() -> None:
         if inp.lower() == "w":
             cfg.scan_ports = WIDE_PORTS
             cfg.masscan_rate = max(500, cfg.masscan_rate // 2)
-            port_count = len(cfg.scan_ports.split(","))
-            print(f"  宽端口模式: {port_count} 段 ({cfg.masscan_rate} pps)")
+            print(f"  宽端口模式: {_port_count(cfg.scan_ports)} 端口 ({cfg.masscan_rate} pps)")
         elif inp.lower() == "r":
             cfg.scan_ports = _random_ports()
             print(f"  随机端口: {cfg.scan_ports}")
@@ -687,6 +804,11 @@ def main() -> None:
         try:
             if p.exists():
                 p.unlink()
+        except OSError:
+            pass
+    for p in BASE.glob("masscan_batch_*.xml"):
+        try:
+            p.unlink()
         except OSError:
             pass
 
