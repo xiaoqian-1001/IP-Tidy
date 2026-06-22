@@ -241,4 +241,5 @@ curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/uninstall.
 
 ## 鸣谢
 
+- [**e13815332**](https://github.com/e13815332) --- ASNIPtest 原作者，项目架构与核心扫描流程设计
 - [**cmliu**](https://github.com/cmliu) --- 提供 [CF-Workers-CheckProxyIP](https://github.com/cmliu/CF-Workers-CheckProxyIP) 公共 API 接口 (`api.090227.xyz/check`)，用于节点二次验证
