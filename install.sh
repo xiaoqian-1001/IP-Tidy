@@ -50,9 +50,7 @@ do_update() {
     OLD_VER=$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo "未知")
     info "当前版本: $OLD_VER → 检查更新..."
     cd "$PROJECT_DIR"
-    # fetch 安全下载，不碰工作区；reset --hard 强制对齐，无视本地未跟踪文件
-    git fetch origin main
-    git reset --hard origin/main
+    git pull origin main --ff-only
     NEW_VER=$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo "未知")
     if [ "$OLD_VER" = "$NEW_VER" ]; then
         info "已是最新版本 $NEW_VER"
@@ -201,33 +199,6 @@ PROJECT_DIR="$HOME/ASNIPtest"
 case "${1:-}" in
     update)    exec bash "$PROJECT_DIR/install.sh" update ;;
     uninstall) exec bash "$PROJECT_DIR/install.sh" uninstall ;;
-    log)       shift; LOG=$(ls -t "$PROJECT_DIR"/scan_*.log 2>/dev/null | head -1)
-               if [ -z "$LOG" ]; then echo "暂无日志"; exit 0; fi
-               echo "日志: $LOG"; exec tail -f "$LOG" "$@" ;;
-    result)    CSV=$(ls -t "$PROJECT_DIR"/output_*.csv 2>/dev/null | head -1)
-               if [ -z "$CSV" ]; then echo "暂无结果"; exit 0; fi
-               echo "文件: $CSV"
-               echo "行数: $(wc -l < "$CSV" | tr -d ' ')"
-               echo "---"
-               column -t -s',' "$CSV" 2>/dev/null | head -20
-               [ "$(wc -l < "$CSV")" -gt 20 ] && echo "... (还有更多行)"
-               echo "---"
-               echo "下载: cat $CSV"
-               LAN=$(hostname -I 2>/dev/null | awk '{print $1}')
-               echo "      curl -O http://$LAN:8899/$(basename "$CSV")  (需先启动服务)"
-               echo "---"
-               if [ "${2:-}" = "--serve" ]; then
-                   PORT=8899
-                   while ss -tlnp 2>/dev/null | grep -q ":$PORT "; do PORT=$((PORT+1)); done
-                   python3 -m http.server "$PORT" --directory "$PROJECT_DIR" &>/dev/null &
-                   HTTP_PID=$!
-                   echo "  🌐 http://$LAN:$PORT/$(basename "$CSV")"
-                   echo "  (按 Ctrl+C 关闭)"
-                   trap "kill $HTTP_PID 2>/dev/null" EXIT
-                   wait $HTTP_PID 2>/dev/null
-               else
-                   echo "  启动下载服务: cmtjd result --serve"
-               fi ;;
     "")        exec python3 "$PROJECT_DIR/run.py" ;;
     *)         exec python3 "$PROJECT_DIR/run.py" "$@" ;;
 esac
@@ -235,11 +206,8 @@ WRAPEOF
     $SUDO mv "/tmp/cmtjd_wrapper" "$WRAPPER"
     $SUDO chmod +x "$WRAPPER"
     info "快捷命令已就绪: cmtjd                   (输入 ASN 扫描)"
-    info "                  cmtjd --bg AS12345    (挂机模式)"
-    info "                  cmtjd log             (查看最新日志)"
-    info "                  cmtjd result          (查看最新结果)"
-    info "                  cmtjd update          (更新)"
-    info "                  cmtjd uninstall       (卸载)"
+    info "                  cmtjd update            (更新)"
+    info "                  cmtjd uninstall         (卸载)"
 
     echo ""
     echo -e "${GREEN}${BOLD}✅ 安装完成，开始运行${NC}"
