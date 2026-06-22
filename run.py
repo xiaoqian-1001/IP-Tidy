@@ -134,21 +134,38 @@ def _detect_network_iface() -> Optional[str]:
     return None
 
 
-CPU_CORES, RAM_MB = detect_hardware()
-MASSCAN_RATE = probe_masscan_rate()
-CF_SCANNER_CONC = max(200, min(CPU_CORES * 100, 500))
-API_CONCURRENT = min(CPU_CORES * 16, 32)
-API_CHUNK = 2000 if RAM_MB < 1024 else 5000
+# ── 惰性初始化的全局变量 ──
+CPU_CORES = 1
+RAM_MB = 512
+MASSCAN_RATE = 2000
+CF_SCANNER_CONC = 200
+API_CONCURRENT = 8
+API_CHUNK = 2000
+DEFAULT_PORTS = "443,8443,2053,2083,2087,2096"
+GLOBAL_IP = ""
+GLOBAL_COUNTRY = ""
+GLOBAL_ISP = ""
 
-print(f"  硬件: {CPU_CORES}核 {RAM_MB}MB -> masscan {MASSCAN_RATE}pps "
-      f"cf-scanner {CF_SCANNER_CONC}c API {API_CONCURRENT}c")
 
-GLOBAL_IP, GLOBAL_COUNTRY, GLOBAL_ISP = detect_isp(get_public_ip())
+def _init_runtime() -> None:
+    """初始化运行时全局变量（需在执行扫描前调用一次）"""
+    global CPU_CORES, RAM_MB, MASSCAN_RATE, CF_SCANNER_CONC
+    global API_CONCURRENT, API_CHUNK, DEFAULT_PORTS, GLOBAL_IP, GLOBAL_COUNTRY, GLOBAL_ISP
 
-# 加载默认端口
-with open(BASE / "ports.txt") as f:
-    _raw_ports = [l.strip() for l in f if l.strip() and not l.startswith("#")]
-DEFAULT_PORTS = ",".join(_raw_ports)
+    CPU_CORES, RAM_MB = detect_hardware()
+    MASSCAN_RATE = probe_masscan_rate()
+    CF_SCANNER_CONC = max(200, min(CPU_CORES * 100, 500))
+    API_CONCURRENT = min(CPU_CORES * 16, 32)
+    API_CHUNK = 2000 if RAM_MB < 1024 else 5000
+
+    print(f"  硬件: {CPU_CORES}核 {RAM_MB}MB -> masscan {MASSCAN_RATE}pps "
+          f"cf-scanner {CF_SCANNER_CONC}c API {API_CONCURRENT}c")
+
+    GLOBAL_IP, GLOBAL_COUNTRY, GLOBAL_ISP = detect_isp(get_public_ip())
+
+    with open(BASE / "ports.txt") as f:
+        _raw_ports = [l.strip() for l in f if l.strip() and not l.startswith("#")]
+    DEFAULT_PORTS = ",".join(_raw_ports)
 
 
 def ensure_cf_scanner_executable() -> None:
@@ -498,6 +515,7 @@ def _parse_port_arg(args: list[str]) -> tuple[str, bool]:
 
 def main() -> None:
     """主入口"""
+    _init_runtime()
     args = sys.argv[1:]
     asns = _parse_asn_args(args)
 
