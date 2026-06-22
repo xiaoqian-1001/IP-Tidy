@@ -537,7 +537,7 @@ def _parse_asns(raw_args: list[str]) -> list[str]:
         i = 0
         while i < len(raw_args):
             if raw_args[i] in ("-p", "-w"):
-                i += 2 if raw_args[i] == "-p" else 1
+                i += 2 if raw_args[i] in ("-p", "-r") else 1
             else:
                 filtered.append(raw_args[i])
                 i += 1
@@ -565,9 +565,9 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="示例:\n"
                "  xiaoqian AS209242\n"
-               "  xiaoqian AS209242,AS3214\n"
+               "  xiaoqian AS209242 -w -s\n"
                "  xiaoqian AS209242 -p 443,8443\n"
-               "  xiaoqian AS209242 -w -s")
+               "  xiaoqian AS209242 -w -r 4000")
     parser.add_argument("asns", nargs="*", help="ASN 编号 (可多个，空格或逗号分隔)")
     parser.add_argument("-p", "--ports", metavar="PORTS",
                         help="自定义扫描端口 (如 443 或 80,443 或 8000-9000)")
@@ -575,6 +575,8 @@ def main() -> None:
                         help="扫描完成后自动测速")
     parser.add_argument("-w", "--wide", action="store_true",
                         help=f"宽端口模式: {WIDE_PORTS}")
+    parser.add_argument("-r", "--rate", metavar="PPS", type=int,
+                        help="masscan 发包速率 (默认自动探测)")
     parser.add_argument("-v", "--version", action="version",
                         version=f"ASNIPtest {VERSION}")
     a = parser.parse_args()
@@ -588,6 +590,10 @@ def main() -> None:
 
     print(f"\n  ASN: {', '.join(f'AS{x}' for x in asns)}\n")
 
+    if a.rate:
+        cfg.masscan_rate = max(100, a.rate)
+        print(f"  发包速率: {cfg.masscan_rate} pps (手动)")
+
     if a.ports:
         cfg.scan_ports = parse_ports(a.ports)
         if not cfg.scan_ports:
@@ -596,8 +602,10 @@ def main() -> None:
         print(f"  自定义端口: {cfg.scan_ports}")
     elif a.wide:
         cfg.scan_ports = WIDE_PORTS
-        cfg.masscan_rate = max(500, cfg.masscan_rate // 4)
-        print(f"  宽端口模式: {len(WIDE_PORTS.split(','))} 段 ({cfg.masscan_rate} pps)")
+        if not a.rate:
+            cfg.masscan_rate = max(500, cfg.masscan_rate // 2)
+        port_count = len(cfg.scan_ports.split(","))
+        print(f"  宽端口模式: {port_count} 段 ({cfg.masscan_rate} pps)")
     elif not sys.argv[1:] and not a.asns:
         print(f"  默认端口: {cfg.scan_ports}")
         print(f"  宽端口: {WIDE_PORTS}")
@@ -607,8 +615,9 @@ def main() -> None:
             inp = ""
         if inp.lower() == "w":
             cfg.scan_ports = WIDE_PORTS
-            cfg.masscan_rate = max(500, cfg.masscan_rate // 4)
-            print(f"  宽端口模式 ({cfg.masscan_rate} pps)")
+            cfg.masscan_rate = max(500, cfg.masscan_rate // 2)
+            port_count = len(cfg.scan_ports.split(","))
+            print(f"  宽端口模式: {port_count} 段 ({cfg.masscan_rate} pps)")
         elif inp:
             parsed = parse_ports(inp)
             if parsed:
