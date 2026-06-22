@@ -9,6 +9,7 @@ import os
 import re
 import time
 import json
+import random
 import socket
 import argparse
 import subprocess
@@ -37,6 +38,9 @@ CF_SCANNER = BASE / "cf-scanner"
 VERIFY_PY = BASE / "verify.py"
 API_URL = "https://api.090227.xyz/check"
 WIDE_PORTS = "22,80,443,8080,8443,2053,2083,2087,2096,13000-14000,20000-45000"
+_RANDOM_POOL = ["22","80","443","8080","8443","2053","2083","2087","2096",
+                "8081","8880","2095","5353","7000","9000","10000","12000",
+                "14000","16000","18000","20000","25000","30000","35000","40000","45000"]
 
 _SPEED_TESTS = [
     ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=1048576",   1,   "1MB"),
@@ -44,6 +48,12 @@ _SPEED_TESTS = [
     ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=100000000", 100, "100MB"),
     ("cloudflare.cdn.openbsd.org", "https://cloudflare.cdn.openbsd.org/pub/OpenBSD/7.3/src.tar.gz", 0, "CDN"),
 ]
+
+def _random_ports(n: int = 5) -> str:
+    chosen = random.sample(_RANDOM_POOL, min(len(_RANDOM_POOL), n))
+    random.shuffle(chosen)
+    return ",".join(chosen)
+
 _version = "unknown"
 try:
     _vp = BASE / "VERSION"
@@ -545,10 +555,13 @@ def _parse_asns(raw_args: list[str]) -> list[str]:
         filtered = []
         i = 0
         while i < len(raw_args):
-            if raw_args[i] in ("-p", "-w"):
-                i += 2 if raw_args[i] in ("-p", "-r") else 1
+            arg = raw_args[i]
+            if arg in ("-p", "-r"):
+                i += 2
+            elif arg in ("-s", "-w", "-R"):
+                i += 1
             else:
-                filtered.append(raw_args[i])
+                filtered.append(arg)
                 i += 1
         raw = ",".join(filtered)
 
@@ -583,7 +596,9 @@ def main() -> None:
     parser.add_argument("-s", "--speed", action="store_true",
                         help="扫描完成后自动测速")
     parser.add_argument("-w", "--wide", action="store_true",
-                        help=f"宽端口模式: {WIDE_PORTS}")
+                        help=f"宽端口模式")
+    parser.add_argument("-R", "--random", action="store_true",
+                        help="随机 5 端口快速探测")
     parser.add_argument("-r", "--rate", metavar="PPS", type=int,
                         help="masscan 发包速率 (默认自动探测)")
     parser.add_argument("-v", "--version", action="version",
@@ -615,11 +630,14 @@ def main() -> None:
             cfg.masscan_rate = max(500, cfg.masscan_rate // 2)
         port_count = len(cfg.scan_ports.split(","))
         print(f"  宽端口模式: {port_count} 段 ({cfg.masscan_rate} pps)")
+    elif a.random:
+        cfg.scan_ports = _random_ports()
+        print(f"  随机端口: {cfg.scan_ports}")
     elif not sys.argv[1:] and not a.asns:
         print(f"  默认端口: {cfg.scan_ports}")
         print(f"  宽端口: {WIDE_PORTS}")
         try:
-            inp = input("  回车默认 / w=宽端口 / 或输入自定义: ").strip()
+            inp = input("  回车默认 / w=宽端口 / r=随机5端口 / 自定义: ").strip()
         except (EOFError, KeyboardInterrupt):
             inp = ""
         if inp.lower() == "w":
@@ -627,6 +645,9 @@ def main() -> None:
             cfg.masscan_rate = max(500, cfg.masscan_rate // 2)
             port_count = len(cfg.scan_ports.split(","))
             print(f"  宽端口模式: {port_count} 段 ({cfg.masscan_rate} pps)")
+        elif inp.lower() == "r":
+            cfg.scan_ports = _random_ports()
+            print(f"  随机端口: {cfg.scan_ports}")
         elif inp:
             parsed = parse_ports(inp)
             if parsed:
