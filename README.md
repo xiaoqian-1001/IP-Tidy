@@ -10,7 +10,7 @@
 
 ```bash
 # 安装（自动处理所有依赖）
-curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/xiaoqian-1001/ASNIPtest/main/install.sh | bash
 
 # 使用
 cmtjd AS209242              # 单个 ASN
@@ -55,7 +55,7 @@ graph LR
 | 方式 | 命令 |
 |------|------|
 | 一键脚本 | `curl -fsSL https://raw.githubusercontent.com/E13815332/ASNIPtest/main/install.sh \| bash` |
-| 手动安装 | `git clone --depth 1 https://github.com/e13815332/ASNIPtest.git ~/ASNIPtest && cd ~/ASNIPtest/cf-scanner-src && go build -o ../cf-scanner main.go` |
+| 手动安装 | `git clone --depth 1 https://github.com/xiaoqian-1001/ASNIPtest.git ~/ASNIPtest && cd ~/ASNIPtest/cf-scanner-src && go build -o ../cf-scanner main.go` |
 | Docker | `docker build -t asniptest . && docker run --rm --cap-add=NET_RAW --network host asniptest AS209242` |
 
 **Windows** 用户先装 WSL2：`wsl --install`，重启后在 Ubuntu 终端执行一键安装。
