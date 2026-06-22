@@ -577,6 +577,25 @@ def output_csv(asns):
 
 # ── Main ──
 if __name__ == "__main__":
+
+    # ── 挂机模式：nohup 后台运行 ──
+    if "--bg" in sys.argv and sys.argv.index("--bg") == 1:
+        args = [a for a in sys.argv[1:] if a != "--bg"]
+        if not args:
+            print("用法: cmtjd --bg AS209242")
+            sys.exit(1)
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        asn_tag = "_".join(a.replace("AS", "").replace("as", "") for a in args if not a.startswith("-"))
+        logfile = str(BASE / f"scan_{asn_tag}_{ts}.log")
+        import subprocess as sp
+        p = sp.Popen(["nohup", sys.executable, sys.argv[0]] + args,
+                     stdout=open(logfile, "w"), stderr=sp.STDOUT,
+                     start_new_session=True)
+        print(f"  ✅ 已挂机 (PID {p.pid}) → {os.path.basename(logfile)}")
+        print(f"  查看: tail -f {logfile}")
+        sys.exit(0)
+
     if len(sys.argv) < 2:
         try:
             raw = input("  输入 ASN 编号 (多个用逗号分隔): ").strip()
