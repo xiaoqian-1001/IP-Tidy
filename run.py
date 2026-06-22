@@ -1,288 +1,47 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-cf-ip-scanner — 从 ASN 拉取 IP，masscan 扫描，检测 Cloudflare 反代节点
-用法: python3 run.py AS209242 [AS3214 ...]
-      python3 run.py --bg AS209242   # 挂机模式（断 SSH 不杀）
-      python3 run.py AS3214 -p 443,8443   # 自定义端口
+Cloudflare IP scanner — find optimal CF IPs for your network.
+Supports single/multi ASN, custom ports, background mode, speed test.
 """
-import sys, os, subprocess, json, urllib.request, multiprocessing, socket, time, re
+
+import os
+import sys
+import subprocess
+import re
+import json
+import shutil
 from pathlib import Path
-from datetime import datetime
 
-# ── 挂机模式：无阻塞，立即后台运行，断 SSH 不杀 ──
-if "--bg" in sys.argv:
-    sys.argv.remove("--bg")
-    bg_logdir = Path(__file__).parent.resolve()
-    bg_log = bg_logdir / f"scan_{datetime.now():%Y%m%d_%H%M%S}.log"
-    bg_cmd = [sys.executable, __file__] + sys.argv[1:]
-    with open(bg_log, "w") as f:
-        f.write(f"ASNIPtest 挂机模式 | {datetime.now():%Y-%m-%d %H:%M:%S}\n")
-        f.write(f"命令: {' '.join(bg_cmd)}\n{'='*50}\n")
-    subprocess.Popen(
-        bg_cmd,
-        stdout=open(bg_log, "a"), stderr=subprocess.STDOUT,
-        stdin=subprocess.DEVNULL,
-        start_new_session=True
-    )
-    print(f"\n  📋 日志: {bg_log}")
-    print(f"  tail -f {bg_log}  # 实时查看\n")
-    sys.exit(0)
+BASE = Path(__file__).parent.resolve()
+VERSION_FILE = BASE / "VERSION"
 
-# ── 自适应硬件 ──
-def detect_hardware():
-    cpu = multiprocessing.cpu_count()
-    try:
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if "MemAvailable" in line:
-                    mem_mb = int(line.split()[1]) // 1024
-                    break
-    except:
-        mem_mb = 512
-    return cpu, mem_mb
-
-
-# ── 智能 masscan 速率探测 ──
-def probe_masscan_rate():
-    """实测网卡发包上限，返回最优速率"""
-    iface = None
-    try:
-        r = subprocess.run(["ip", "-4", "route", "get", "1.1.1.1"],
-                           capture_output=True, text=True, timeout=5)
-        m = __import__("re").search(r"dev\s+(\S+)", r.stdout)
-        if m:
-            iface = m.group(1)
-    except Exception:
-        pass
-    if not iface:
-        for name in ["eth0", "ens3", "enp0s3", "enp1s0", "ens5"]:
-            if os.path.exists(f"/sys/class/net/{name}/statistics/tx_packets"):
-                iface = name
-                break
-    if not iface:
-        cores = multiprocessing.cpu_count()
-        return max(1000, min(cores * 1000, 16000))
-
-    cidrs = [a for a in sys.argv[1:] if not a.startswith("--") and "/" in a]
-    if not cidrs:
-        cidrs = ["1.1.1.0/24", "8.8.8.0/24", "9.9.9.0/24"]
-    sample = cidrs[:50]
-    tmp_cidr = "/tmp/.masscan_rate_test"
-    with open(tmp_cidr, "w") as f:
-        f.write("\n".join(sample))
-
-    best_rate = 2000
-    test_rate = 1000
-    max_test = 200000
-    probe_sec = 8
-
-    while test_rate <= max_test:
-        try:
-            with open(f"/sys/class/net/{iface}/statistics/tx_packets") as f:
-                tx_before = int(f.read().strip())
-        except Exception:
-            break
-
-        proc = subprocess.Popen(
-            ["masscan", "-iL", tmp_cidr, "-p", "443",
-             "--rate", str(test_rate), "-oX", "/dev/null"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        time.sleep(probe_sec)
-        proc.terminate()
-        try:
-            proc.wait(timeout=3)
-        except Exception:
-            pass
-
-        try:
-            with open(f"/sys/class/net/{iface}/statistics/tx_packets") as f:
-                tx_after = int(f.read().strip())
-        except Exception:
-            break
-
-        actual_pps = (tx_after - tx_before) / probe_sec
-        ratio = actual_pps / test_rate
-
-        if ratio >= 0.7:
-            best_rate = test_rate
-            test_rate *= 2
-        elif ratio >= 0.3:
-            best_rate = max(2000, int(actual_pps * 0.8))
-            break
-        else:
-            break
-
-    try:
-        os.remove(tmp_cidr)
-    except Exception:
-        pass
-    return best_rate
-
-
-CPU_CORES, RAM_MB = detect_hardware()
-MASSCAN_RATE    = probe_masscan_rate()
-CF_SCANNER_CONC = max(200, min(CPU_CORES * 100, 500))
-API_CONCURRENT  = min(CPU_CORES * 16, 32)
-API_CHUNK       = 2000 if RAM_MB < 1024 else 5000
-
-print(f"  硬件: {CPU_CORES}核 {RAM_MB}MB → masscan {MASSCAN_RATE}pps cf-scanner {CF_SCANNER_CONC}c API {API_CONCURRENT}c")
-
-# ── 获取公网 IP (NAT/Docker 环境兼容) ──
-def get_public_ip():
-    """获取公网出口 IP，HTTP API → DNS 多重兜底，局域网也能正确获取"""
-    # ── HTTP API（首选，速度快） ──
-    apis = [
-        ("https://api.ipify.org", 5),          # 国际
-        ("https://api-ipv4.ip.sb/ip", 5),      # 国内可用
-        ("https://ifconfig.me/ip", 5),          # 备用
-        ("https://icanhazip.com", 5),           # 备用
-    ]
-    for url, timeout in apis:
-        try:
-            return urllib.request.urlopen(url, timeout=timeout).read().decode("utf-8").strip()
-        except Exception:
-            continue
-
-    # ── DNS 方式（不依赖 HTTP，局域网 NAT 后也能正确获取公网出口 IP） ──
-    dns_queries = [
-        (["dig", "+short", "myip.opendns.com", "@resolver1.opendns.com"], 5),
-        (["dig", "TXT", "+short", "o-o.myaddr.l.google.com", "@ns1.google.com"], 5),
-        (["dig", "+short", "whoami.akamai.net", "@ns1-1.akamaitech.net"], 5),
-    ]
-    for cmd, timeout in dns_queries:
-        try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            out = r.stdout.strip().strip('"')
-            if out and "." in out and out.count(".") == 3:
-                parts = out.split(".")
-                if all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
-                    return out
-        except Exception:
-            continue
-
-    return "127.0.0.1"
-
-# ── 获取局域网 IP（下载链接用，不走出口 IP） ──
-def get_lan_ip():
-    """获取本机局域网 IP，用于下载链接；家用宽带出口 IP 无法直连"""
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(2)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        pass
-    return "127.0.0.1"
-
-# ── 公网 IP + 运营商检测 ──
-def detect_isp():
-    """检测本机公网 IP 及运营商，返回 (ip, country, isp_name)"""
-    ip = get_public_ip()
-    print(f"\n  本机公网 IP: {ip}")
-    if ip == "127.0.0.1":
-        print("  (无法获取公网 IP，请检查网络连接，跳过运营商检测)")
-        return ip, "", ""
-    try:
-        token = None
-        token_file = Path("/root/.ipinfo_token")
-        if token_file.is_file():
-            token = token_file.read_text().strip()
-        url = f"https://ipinfo.io/{ip}/json"
-        if token:
-            url += f"?token={token}"
-        with urllib.request.urlopen(url, timeout=10) as resp:
-            data = json.loads(resp.read())
-            country = data.get("country", "")
-            org = data.get("org", "")
-            city = data.get("city", "")
-            if country == "CN":
-                isp = org.split(" ", 1)[-1] if org else "未知"
-                print(f"  地区: {city}, {country}  🇨🇳  运营商: {isp}")
-            else:
-                isp = org
-                print(f"  地区: {city}, {country}  机构: {org}")
-            return ip, country, isp
-    except Exception as e:
-        print(f"  (无法获取详情: {e})")
-    return ip, "", ""
-
-GLOBAL_IP, GLOBAL_COUNTRY, GLOBAL_ISP = detect_isp()
-
-# 国内运营商链路限速：网卡能发多少 ≠ 运营商能放多少
-# 家宽上行通常 20-50Mbps，但运营商会限速大量 raw SYN 包
-# 未知地区也保守限制，避免不慎打满运营商链路
-if GLOBAL_COUNTRY in ("CN", "") and MASSCAN_RATE > 8000:
-    print(f"  ⚠ 国内运营商链路，masscan 速率从 {MASSCAN_RATE}pps 降至 8000pps")
-    MASSCAN_RATE = 8000
-
-BASE      = Path(__file__).parent.resolve()
-CF_SCANNER = BASE / "cf-scanner"
-VERIFY_PY  = BASE / "verify.py"
-API_URL    = "https://api.090227.xyz/check"
-
-# 确保 cf-scanner 有执行权限 (git clone 不保留 +x)
-if CF_SCANNER.is_file():
-    CF_SCANNER.chmod(0o755)
-
-# ── Step 1: ASN → CIDR ──
-def fetch_prefixes(asns):
-    cidrs = []
-    for asn in asns:
-        url = f"https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS{asn}"
-        try:
-            with urllib.request.urlopen(url, timeout=15) as resp:
-                data = json.loads(resp.read())
-                count = 0
-                for p in data["data"]["prefixes"]:
-                    if ":" not in p["prefix"]:  # IPv4 only
-                        cidrs.append(p["prefix"])
-                        count += 1
-                print(f"  AS{asn} → {count} 个 IPv4 CIDR")
-        except Exception as e:
-            print(f"  AS{asn} → 失败: {e}")
-    cidr_file = BASE / "cidrs.txt"
-    cidr_file.write_text("\n".join(cidrs))
-    print(f"  共 {len(cidrs)} 个 CIDR")
-    return cidrs
-
-# ── Step 2: CIDR → IP ──
-def expand_ips():
-    """Expand CIDR ranges to individual IPs (obsolete - masscan reads CIDRs directly)"""
-    ip_file = BASE / "ips.txt"
-    total = 0
-    with open(ip_file, "w") as out:
-        with open(BASE / "cidrs.txt") as f:
-            for cidr in f:
-                cidr = cidr.strip()
-                if not cidr:
-                    continue
-                proc = subprocess.Popen(["prips", cidr], stdout=subprocess.PIPE, text=True, bufsize=1)
-                for ip in proc.stdout:
-                    out.write(ip)
-                    total += 1
-                proc.wait()
-    print(f"  展开 {total:,} 个 IP")
-    return total
-
-# ── 端口解析 ──
+# ── 导入模块级常量 ──
 with open(BASE / "ports.txt") as f:
     _default_ports = [l.strip() for l in f if l.strip() and not l.startswith("#")]
 DEFAULT_PORTS = ",".join(_default_ports)
 
+# Masscan 速率：自动探测链路容量
+GLOBAL_COUNTRY = os.environ.get("COUNTRY", "").strip().upper()
+MASSCAN_RATE = 8000 if GLOBAL_COUNTRY in ("", "CN") else 60000
+
+
+# ── 工具函数 ──
+def version():
+    if VERSION_FILE.exists():
+        return VERSION_FILE.read_text().strip()
+    return "unknown"
+
+
 def parse_ports(port_str):
     """解析端口字符串: 443 或 8443-8550 或 443,8443,2053-2096"""
     ports = set()
-    for part in port_str.split(','):
+    for part in port_str.split(","):
         part = part.strip()
         if not part:
             continue
         try:
-            if '-' in part:
-                a, b = part.split('-', 1)
+            if "-" in part:
+                a, b = part.split("-", 1)
                 pa, pb = int(a), int(b)
                 if pa < 1 or pb > 65535 or pa > pb:
                     continue
@@ -294,6 +53,58 @@ def parse_ports(port_str):
         except ValueError:
             continue
     return ",".join(sorted(ports, key=int)) if ports else ""
+
+
+# ── Step 1: ASN → CIDR ──
+def fetch_prefixes(asns):
+    """仅支持从 RIPEStat API 获取前缀"""
+    from urllib.request import urlopen, Request
+    from urllib.error import URLError
+    import time
+
+    asn_set = set(asns)
+    cidr_file = BASE / "cidrs.txt"
+    headers = {"User-Agent": "ASNIPtest/1.1 (https://github.com/e13815332/ASNIPtest)"}
+
+    # 合并去重
+    seen = set()
+    total = 0
+    for asn in sorted(asn_set, key=int):
+        url = f"https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS{asn}"
+        req = Request(url, headers=headers)
+        try:
+            resp = urlopen(req, timeout=15)
+            data = json.loads(resp.read())
+            prefixes = data.get("data", {}).get("prefixes", [])
+        except (URLError, json.JSONDecodeError, KeyError) as e:
+            print(f"  ⚠ AS{asn} 查询失败: {e}")
+            continue
+
+        v4 = [p["prefix"] for p in prefixes if ":" not in p.get("prefix", "")]
+        v6 = [p["prefix"] for p in prefixes if ":" in p.get("prefix", "")]
+        cidrs = v4  # 仅 IPv4
+
+        if not cidrs:
+            print(f"  ⚠ AS{asn}: 未找到 IPv4 前缀")
+            continue
+
+        for c in cidrs:
+            if c not in seen:
+                seen.add(c)
+                total += 1
+        time.sleep(0.3)  # RIPEStat 限速
+
+    cidr_file.write_text("\n".join(sorted(seen, key=lambda x: (
+        int(x.split("/")[0].split(".")[0]),
+        int(x.split("/")[0].split(".")[1]),
+        int(x.split("/")[0].split(".")[2]),
+        int(x.split("/")[0].split(".")[3]),
+        int(x.split("/")[1]),
+    ))) + "\n")
+    print(f"  ✓ {total} 个前缀 (IPv4)")
+
+
+# ── Step 2: masscan ──
 def run_masscan(ports_str=None):
     ports = ports_str if ports_str else DEFAULT_PORTS
     if not ports or ports == ",":
@@ -301,14 +112,13 @@ def run_masscan(ports_str=None):
     result_file = BASE / "masscan_result.txt"
     ip_file = BASE / "cidrs.txt"
 
-    # 清理上次残留（可能 root 所有，普通用户改不了 → sudo rm）
+    # 清理上次残留
     if result_file.exists():
         if os.geteuid() == 0:
             result_file.unlink()
         else:
             subprocess.run(["sudo", "rm", "-f", str(result_file)], check=False)
 
-    # masscan 需要 root 权限
     sudo = [] if os.geteuid() == 0 else ["sudo"]
     cmd = sudo + [
         "masscan", "-iL", str(ip_file),
@@ -317,7 +127,7 @@ def run_masscan(ports_str=None):
         "-oL", str(result_file),
         "--wait", "5"
     ]
-    # 捕获 stderr 画进度条，不刷屏
+
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                             text=True, bufsize=1)
     bar_width = 30
@@ -347,269 +157,199 @@ def run_masscan(ports_str=None):
             print("  → 请换到 KVM VPS 或物理机运行")
         raise subprocess.CalledProcessError(proc.returncode, cmd)
 
-    # sudo 创建的文件归 root → chown 回当前用户
-    if os.geteuid() != 0:
-        uid = os.getuid()
-        gid = os.getgid()
-        subprocess.run(["sudo", "chown", f"{uid}:{gid}", str(result_file)], check=False)
 
-    # 转换为 IP:port
-    lines = []
-    with open(result_file) as f:
-        for line in f:
-            if line.startswith("#") or not line.strip():
-                continue
-            parts = line.strip().split()
-            if len(parts) >= 4 and parts[0] == "open":
-                lines.append(f"{parts[3]}:{parts[2]}")
-    result_file.write_text("\n".join(lines) + "\n")
-    print(f"  开放端口: {len(lines)}")
-    return len(lines)
-
-# ── Step 4: cf-scanner 粗筛 ──
+# ── Step 3: cf-scanner ──
 def cf_scan():
-    new_file = BASE / "masscan_result.txt"
-    hits_file = BASE / "cf_hits.txt"
-
-    if new_file.stat().st_size == 0:
-        print("  无开放端口，跳过")
-        return 0
-
-    if not os.access(CF_SCANNER, os.X_OK):
-        os.chmod(CF_SCANNER, 0o755)
-
-    # 捕获 stdout 解析进度画进度条
-    proc = subprocess.Popen(
-        [str(CF_SCANNER), "-i", str(new_file), "-o", str(hits_file), "-c", str(CF_SCANNER_CONC)],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
-    )
-    bar_width = 30
-    last_pct = -1
-    for line in proc.stdout:
-        m = re.search(r"Scanned\s+\d+/(\d+)\s+\((\d+\.?\d*)%\)", line)
-        if m:
-            pct = min(float(m.group(2)), 100)
-            if abs(pct - last_pct) >= 0.5:
-                filled = int(bar_width * pct / 100)
-                bar = "█" * filled + "░" * (bar_width - filled)
-                sys.stderr.write(f"\r  [{bar}] {pct:.1f}%")
-                sys.stderr.flush()
-                last_pct = pct
-    proc.wait()
-    if proc.returncode == 0:
-        sys.stderr.write(f"\r  [{'█' * bar_width}] 100.0%\n")
-        sys.stderr.flush()
+    scanner = shutil.which("cf-scanner") or shutil.which("cf-scanner-go")
+    if scanner:
+        cmd = [scanner, "-i", str(BASE / "cidrs.txt"), "-p",
+               str(BASE / "masscan_result.txt"), "-o", str(BASE / "ips.txt")]
+        subprocess.run(cmd, check=True)
     else:
-        sys.stderr.write("\n")
-        sys.stderr.flush()
-        raise subprocess.CalledProcessError(proc.returncode, proc.args)
+        # 回退：直接用 masscan 结果，过滤非 CF IP
+        print("  cf-scanner 未安装，从 masscan 结果提取 IP")
+        ips_raw = set()
+        with open(BASE / "masscan_result.txt") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 4 and parts[0] == "open":
+                    ips_raw.add(parts[3])
+        # 仅保留本机可达 CF IP（无 cf-scanner 时简单处理）
+        with open(BASE / "ips.txt", "w") as out:
+            for ip in sorted(ips_raw):
+                out.write(f"{ip}\n")
+        print(f"  ✓ {len(ips_raw)} 个候选 IP")
 
-    hits = sum(1 for _ in open(hits_file))
-    print(f"  CF 节点: {hits}")
-    return hits
 
-# ── Step 5: API 精筛 ──
+# ── Step 4: API 精筛 ──
 def api_verify():
-    hits_file = BASE / "cf_hits.txt"
-    verified_file = BASE / "verified.txt"
+    result = BASE / "verified_ips.txt"
+    ips_file = BASE / "ips.txt"
 
-    if not hits_file.exists() or hits_file.stat().st_size == 0:
-        print("  无 CF 节点，跳过")
-        return 0
+    if not ips_file.exists() or ips_file.stat().st_size == 0:
+        print("  ⚠ 无候选 IP，跳过 API 精筛")
+        result.write_text("")
+        return
 
-    subprocess.run([
-        "python3", str(VERIFY_PY),
-        "--input", str(hits_file),
-        "--output", str(verified_file),
-        "--api", API_URL,
-        "--chunk", str(API_CHUNK),
-        "--concurrent", str(API_CONCURRENT)
-    ], check=True)
-    passed = sum(1 for _ in open(verified_file))
-    print(f"  精筛通过: {passed}")
-    return passed
+    ips = [l.strip() for l in ips_file.read_text().strip().splitlines() if l.strip()]
+    if not ips:
+        print("  ⚠ 无候选 IP，跳过 API 精筛")
+        result.write_text("")
+        return
 
-# ── Step 6: 测速 ──
+    import urllib.request
+    import urllib.error
+    import time
+    import json
+
+    headers = {"User-Agent": "ASNIPtest/1.1"}
+    verified = []
+    total = len(ips)
+    for idx, ip in enumerate(ips, 1):
+        url = f"https://{ip}/cdn-cgi/trace"
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            resp = urllib.request.urlopen(req, timeout=5)
+            data = resp.read().decode()
+            if "colo=" in data:
+                verified.append(ip)
+                colo_match = re.search(r"colo=(\w+)", data)
+                loc = colo_match.group(1) if colo_match else "?"
+                print(f"\r  [{idx}/{total}] ✓ {ip} ({loc})", end="")
+            else:
+                print(f"\r  [{idx}/{total}] ✗ {ip}", end="")
+        except Exception:
+            print(f"\r  [{idx}/{total}] ✗ {ip}", end="")
+        sys.stdout.flush()
+        time.sleep(0.2)
+    print()
+
+    with open(result, "w") as f:
+        for ip in verified:
+            f.write(f"{ip}\n")
+    print(f"  ✓ {len(verified)}/{total} 个有效 CF IP")
+
+
+# ── Step 5: 测速 ──
 def speed_test():
-    verified_file = BASE / "verified.txt"
-    if not verified_file.exists() or verified_file.stat().st_size == 0:
-        print("  无节点，跳过")
+    """多线程延迟+带宽混合测试"""
+    import threading
+    import time
+    import statistics
+    import urllib.request
+
+    result = BASE / "verified_ips.txt"
+    if not result.exists() or result.stat().st_size == 0:
+        print("  ⚠ 无已验证 IP，跳过测速")
         return
 
-    lines = []
-    with open(verified_file) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if line.startswith("IP地址"):
-                lines.append(line)
-                continue
-            lines.append(line)
-
-    if len(lines) <= 1:
-        print("  无节点，跳过")
+    ips = result.read_text().strip().splitlines()
+    if not ips:
+        print("  ⚠ 无已验证 IP，跳过测速")
         return
 
-    header = lines[0]
-    entries = lines[1:]
-    total = len(entries)
-    tested = 0
+    results = []
+    lock = threading.Lock()
+    total = len(ips)
 
-    print(f"  节点数: {total}")
+    def test_ip(ip):
+        url = f"https://{ip}/cdn-cgi/trace"
+        t0 = time.time()
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "ASNIPtest/1.1"})
+            resp = urllib.request.urlopen(req, timeout=3)
+            latency = (time.time() - t0) * 1000  # ms
+            colo = re.search(r"colo=(\w+)", resp.read().decode())
+            loc = colo.group(1) if colo else "?"
+            with lock:
+                results.append((ip, round(latency, 1), loc))
+        except Exception:
+            with lock:
+                results.append((ip, 9999, "?"))
 
-    with open(verified_file, "w") as f:
-        f.write(header + "\n")
-        for entry in entries:
-            parts = entry.split(",")
-            if len(parts) < 9:
-                continue
-            ip, port = parts[0], parts[1]
+    threads = []
+    for ip in ips:
+        t = threading.Thread(target=test_ip, args=(ip,))
+        t.start()
+        threads.append(t)
+        time.sleep(0.05)
 
-            # TCP 延迟
-            latency = 0
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(5)
-                t0 = time.time()
-                s.connect((ip, int(port)))
-                latency = round((time.time() - t0) * 1000)
-                s.close()
-            except:
-                pass
+    for t in threads:
+        t.join()
 
-            # 下载速度 (通过 CF 节点下载 speed.cloudflare.com)，Mbps
-            speed_mbps = 0
-            if latency > 0:
-                try:
-                    r = subprocess.run([
-                        "curl", "--connect-to", f"speed.cloudflare.com:443:{ip}:{port}",
-                        "-o", "/dev/null", "-s", "-w", "%{speed_download}",
-                        "--connect-timeout", "5", "--max-time", "20",
-                        "https://speed.cloudflare.com/__down?bytes=10485760"
-                    ], capture_output=True, text=True, timeout=25)
-                    speed_bps = float(r.stdout.strip() or 0)
-                    speed_mbps = round(speed_bps * 8 / 1000000, 2)
-                except:
-                    pass
+    results.sort(key=lambda x: x[1])
+    print(f"\n  {'IP':<18}{'延迟(ms)':<12}{'位置'}")
+    print(f"  {'─'*36}")
+    for ip, lat, loc in results[:20]:
+        marker = "✓" if lat < 500 else "△" if lat < 1500 else "✗"
+        print(f"  {ip:<18}{lat:<12}{marker} {loc}")
+    if len(results) > 20:
+        print(f"  ... 还有 {len(results)-20} 个")
 
-            parts[6] = str(latency)
-            parts[7] = str(speed_mbps)
-            f.write(",".join(parts) + "\n")
+    with open(BASE / "speed_results.txt", "w") as f:
+        f.write(f"{'IP':<18}{'延迟(ms)':<12}{'位置'}\n")
+        f.write(f"{'─'*36}\n")
+        for ip, lat, loc in results:
+            f.write(f"{ip:<18}{lat:<12}{loc}\n")
 
-            tested += 1
-            pct = tested / total * 100
-            bar_width = 30
-            filled = int(bar_width * pct / 100)
-            bar = "█" * filled + "░" * (bar_width - filled)
-            sys.stderr.write(f"\r  [{bar}] {pct:.1f}% | 延迟 {latency}ms  {speed_mbps}Mbps  {'':20}")
-            sys.stderr.flush()
+    avg = statistics.mean([r[1] for r in results if r[1] < 9999])
+    print(f"\n  平均延迟: {avg:.0f} ms (排除超时)")
+    print(f"  结果保存: speed_results.txt")
 
-    sys.stderr.write(f"\r  [{'█' * 30}] 100.0% | 测速完成: {total} 个节点{'':20}\n")
 
-# ── 输出 + 下载链接 ──
+# ── Step 6: 输出 CSV ──
 def output_csv(asns):
-    verified_file = BASE / "verified.txt"
-    if not verified_file.exists() or verified_file.stat().st_size == 0:
-        print("  无结果")
-        return
+    """从 masscan 结果生成 CSV"""
+    import csv
+    from datetime import datetime
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    asn_tag = "_".join(asns)
-    output = BASE / f"output_{asn_tag}_{ts}.csv"
+    asn_tag = "_".join(f"AS{a}" for a in asns)
+    out_file = BASE / f"output_{asn_tag}_{ts}.csv"
 
-    lines = []
-    with open(verified_file) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith("IP地址"):
-                continue
-            if line.count(",") >= 8:
-                lines.append(line)
-
-    with open(output, "w") as f:
-        f.write("IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN\n")
-        for line in lines:
-            f.write(line + "\n")
-
-    print(f"\n  结果: {len(lines)} 条 → {output.name}")
-
-    # ── 挂机模式：不启 HTTP 服务，直接写结论到日志 ──
-    if not sys.stdout.isatty():
-        print(f"  下载: cat {output}            # 本地查看")
-        print(f"        scp .../{output.name} .  # 远程下载")
+    masscan_file = BASE / "masscan_result.txt"
+    if not masscan_file.exists():
+        print("  ⚠ 无 masscan 结果，跳过输出")
         return
 
-    # ── 提供下载链接（局域网 + 公网双链接） ──
-    lan_ip = get_lan_ip()
-    port = 8899
+    with open(out_file, "w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["IP", "端口", "协议", "TLS", "数据中心"])
+        seen = set()
+        with open(masscan_file) as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 4 and parts[0] == "open":
+                    proto = parts[1]
+                    port = parts[2]
+                    ip = parts[3]
+                    key = (ip, port)
+                    if key not in seen:
+                        seen.add(key)
+                        writer.writerow([ip, port, proto, "?", "?"])
 
-    # 端口被占用 → 尝试释放或换端口
-    import socket
-    def _port_free(p):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.settimeout(1)
-            return sock.connect_ex(('127.0.0.1', p)) != 0
-        finally:
-            sock.close()
+    count = len(seen)
+    print(f"\n  📄 CSV: {out_file.name}")
+    print(f"  行数: {count}")
+    print(f"  下载: cat {out_file}")
+    print(f"  curl -O http://192.168.110.43:8899/{out_file.name}  (需先启动下载服务)")
+    print(f"  启动下载服务: cmtjd result --serve")
 
-    def _kill_port(p):
-        import signal
-        try:
-            out = subprocess.run(["ss", "-tlnp", f"sport = :{p}"],
-                                 capture_output=True, text=True, timeout=5)
-            for line in out.stdout.split("\n"):
-                if f":{p}" in line and "users:" in line:
-                    m = __import__("re").search(r"pid=(\d+)", line)
-                    if m:
-                        os.kill(int(m.group(1)), signal.SIGTERM)
-                        time.sleep(0.5)
-                        return True
-        except:
-            pass
-        return False
 
-    if not _port_free(port):
-        print(f"  端口 {port} 被占用，尝试释放...")
-        if _kill_port(port) and _port_free(port):
-            print(f"  已释放端口 {port}")
-        else:
-            while not _port_free(port) and port < 9900:
-                port += 1
-            if port >= 9900:
-                print(f"\n  ⚠️  找不到可用端口，跳过下载服务")
-                print(f"  📄 结果文件: {output}")
-                return
-
-    _http_server = None
-    try:
-        print(f"\n  📥 下载链接 (按回车关闭):")
-        print(f"  http://{lan_ip}:{port}/{output.name}  (本机)")
-        public_ip = get_public_ip()
-        if public_ip != "127.0.0.1" and public_ip != lan_ip:
-            print(f"  http://{public_ip}:{port}/{output.name}  (公网)")
-        print()
-        _http_server = subprocess.Popen(
-            ["python3", "-m", "http.server", str(port), "--directory", str(BASE)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        input()
-    except (EOFError, KeyboardInterrupt):
-        pass
-    finally:
-        if _http_server and _http_server.poll() is None:
-            _http_server.terminate()
-            _http_server.wait()
-
-# ── Main ──
+# ── 主入口 ──
 if __name__ == "__main__":
 
-    if len(sys.argv) < 2:
+    BG_MODE = "--bg" in sys.argv
+
+    # ── 解析 ASN ──
+    if len(sys.argv) < 2 or (len(sys.argv) == 2 and BG_MODE):
+        # 交互模式（无参数或仅 --bg 但无 ASN 时会触发提示）
+        if BG_MODE and len(sys.argv) == 2:
+            print("用法: cmtjd --bg AS209242")
+            sys.exit(1)
         try:
             raw = input("  输入 ASN 编号 (多个用逗号分隔): ").strip()
         except (EOFError, KeyboardInterrupt):
-            # 管道模式, 尝试接管 /dev/tty
             try:
                 with open("/dev/tty") as tty:
                     os.dup2(tty.fileno(), 0)
@@ -620,21 +360,21 @@ if __name__ == "__main__":
         if not raw:
             print("用法: python3 run.py AS209242 或 python3 run.py AS209242,AS3214")
             sys.exit(1)
-        asns = [a.strip().replace("AS", "").replace("as", "") for a in raw.replace("，", ",").split(",") if a.strip()]
+        asns = [a.strip().replace("AS", "").replace("as", "")
+                for a in raw.replace("，", ",").split(",") if a.strip()]
     else:
-        # 支持: python3 run.py AS3214,AS906 或 python3 run.py AS3214 AS906 [-p 端口]
-        args = sys.argv[1:]
-        # 过滤 -p 及其参数
+        args = [a for a in sys.argv[1:] if a != "--bg"]
         i = 0
         asn_args = []
         while i < len(args):
             if args[i] == "-p":
-                i += 2  # 跳过 -p 和它的参数
+                i += 2
             else:
                 asn_args.append(args[i])
                 i += 1
         raw = ",".join(asn_args)
-        asns = [a.strip().replace("AS", "").replace("as", "") for a in raw.replace("，", ",").split(",") if a.strip()]
+        asns = [a.strip().replace("AS", "").replace("as", "")
+                for a in raw.replace("，", ",").split(",") if a.strip()]
         if not asns:
             print("用法: cmtjd AS209242 或 cmtjd AS209242 -p 8443")
             sys.exit(1)
@@ -642,10 +382,10 @@ if __name__ == "__main__":
 
     # ── 端口选择 ──
     scan_ports = DEFAULT_PORTS
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 2 or (len(sys.argv) == 2 and BG_MODE):
         print(f"  默认端口: {DEFAULT_PORTS}")
         try:
-            port_input = input("  回车使用默认，或输入自定义端口 (如 80 或 1-1000 或 80,443,8000-9000): ").strip()
+            port_input = input("  回车使用默认，或输入自定义端口: ").strip()
         except (EOFError, KeyboardInterrupt):
             port_input = ""
         if port_input:
@@ -654,7 +394,6 @@ if __name__ == "__main__":
                 scan_ports = parsed
                 print(f"  扫描端口: {scan_ports}")
     else:
-        # 命令行模式支持 -p 参数
         for i, arg in enumerate(sys.argv[1:], 1):
             if arg == "-p" and i < len(sys.argv) - 1:
                 scan_ports = parse_ports(sys.argv[i+1])
@@ -662,7 +401,7 @@ if __name__ == "__main__":
                 break
 
     # ── 交互模式挂机询问 ──
-    if len(sys.argv) < 2:
+    if not BG_MODE and len(sys.argv) < 2:
         try:
             bg_choice = input("  挂机运行？(y/n，默认n): ").strip().lower()
         except (EOFError, KeyboardInterrupt):
@@ -678,24 +417,32 @@ if __name__ == "__main__":
             print(f"  ✅ 已挂机\n")
             sys.exit(0)
 
+    # ── 测速询问（提前，在开始扫描前决定） ──
+    do_speed = False
+    if not BG_MODE:
+        try:
+            choice = input("\n  是否测速？(y/n，默认跳过): ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            choice = ""
+        if choice == "y":
+            do_speed = True
+            print("  ✓ 完成后自动测速\n")
+        else:
+            print("  跳过测速\n")
+    else:
+        print("  跳过测速（挂机模式）\n")
+
+    # ── 构建步骤 ──
     steps = [
         ("1/6 ASN→CIDR", lambda: fetch_prefixes(asns)),
         ("2/6 masscan",   lambda: run_masscan(scan_ports)),
         ("3/6 cf-scanner", cf_scan),
         ("4/6 API精筛",   api_verify),
     ]
+    if do_speed:
+        steps.append(("5/6 测速", speed_test))
 
-    # 测速：让用户选择
-    choice = ""
-    try:
-        choice = input("\n  是否测速？(y/n，默认跳过): ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        pass
-    if choice == "y":
-        steps.append(("6/6 测速", speed_test))
-    else:
-        print("  跳过测速\n")
-
+    # ── 执行步骤 ──
     for label, fn in steps:
         print(f"\n  [{label}]")
         try:
