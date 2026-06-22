@@ -234,11 +234,16 @@ def step_masscan(cfg: ScannerConfig) -> int:
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
                             stderr=subprocess.PIPE, text=True, bufsize=1)
     stderr_lines: list[str] = []
+    t0 = time.time()
     for line in proc.stderr:
         stderr_lines.append(line)
         m = re.search(r"(\d+\.?\d*)%\s*done", line)
         if m:
-            write_progress(min(float(m.group(1)), 100))
+            pct = min(float(m.group(1)), 100)
+            elapsed = time.time() - t0
+            eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
+            extra = f" | ETA {int(eta // 60)}m {int(eta % 60)}s" if pct > 0.5 else ""
+            write_progress(pct, extra)
     proc.wait()
 
     if proc.returncode != 0:
@@ -313,12 +318,16 @@ def step_cf_scan(cfg: ScannerConfig) -> int:
 
     pat = re.compile(r"(\d+\.?\d*)%")
     last_pct = -1
+    t0 = time.time()
     for line in proc.stdout:
         m = pat.search(line)
         if m:
             pct = min(float(m.group(1)), 100)
             if abs(pct - last_pct) >= 0.5:
-                write_progress(pct)
+                elapsed = time.time() - t0
+                eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
+                extra = f" | ETA {int(eta // 60)}m {int(eta % 60)}s" if pct > 0.5 else ""
+                write_progress(pct, extra)
                 last_pct = pct
     proc.wait()
 
