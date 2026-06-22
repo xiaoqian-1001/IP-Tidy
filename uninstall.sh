@@ -13,7 +13,7 @@ for d in "$HOME/ASNIPtest" "$HOME/cf-ip-scanner.tmp"; do
     fi
 done
 
-WRAPPER="/usr/local/bin/cmtjd"
+WRAPPER="/usr/local/bin/xiaoqian"
 if [ -f "$WRAPPER" ]; then
     sudo rm -f "$WRAPPER"
     info "已删除快捷命令 $WRAPPER"

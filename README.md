@@ -13,14 +13,14 @@
 curl -fsSL https://raw.githubusercontent.com/xiaoqian-1001/ASNIPtest/main/install.sh | bash
 
 # 使用
-cmtjd AS209242              # 单个 ASN
-cmtjd AS209242,AS3214       # 多个 ASN（逗号）
-cmtjd AS209242 AS3214       # 多个 ASN（空格）
-cmtjd AS209242 -p 443,8443  # 自定义端口
+xiaoqian AS209242              # 单个 ASN
+xiaoqian AS209242,AS3214       # 多个 ASN（逗号）
+xiaoqian AS209242 AS3214       # 多个 ASN（空格）
+xiaoqian AS209242 -p 443,8443  # 自定义端口
 
 # 管理
-cmtjd update                 # 更新
-cmtjd uninstall              # 卸载
+xiaoqian update                 # 更新
+xiaoqian uninstall              # 卸载
 ```
 
 无参数运行进入交互模式，按提示输入即可。完成后自动提供 CSV 下载链接。

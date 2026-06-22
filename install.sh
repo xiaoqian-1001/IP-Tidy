@@ -198,9 +198,9 @@ do_install() {
     rm -f "$PROJECT_DIR/cf-scanner"
     build_cf_scanner
 
-    local wrapper="/usr/local/bin/cmtjd"
-    info "注册快捷命令 cmtjd -> $wrapper"
-    cat > "/tmp/cmtjd_wrapper" << 'WRAPEOF'
+    local wrapper="/usr/local/bin/xiaoqian"
+    info "注册快捷命令 xiaoqian -> $wrapper"
+    cat > "/tmp/xiaoqian_wrapper" << 'WRAPEOF'
 #!/usr/bin/env bash
 PROJECT_DIR="$HOME/ASNIPtest"
 case "${1:-}" in
@@ -210,11 +210,11 @@ case "${1:-}" in
     *)         exec python3 "$PROJECT_DIR/run.py" "$@" ;;
 esac
 WRAPEOF
-    $SUDO mv "/tmp/cmtjd_wrapper" "$wrapper"
+    $SUDO mv "/tmp/xiaoqian_wrapper" "$wrapper"
     $SUDO chmod +x "$wrapper"
-    info "快捷命令已就绪: cmtjd                   (输入 ASN 扫描)"
-    info "                   cmtjd update            (更新)"
-    info "                   cmtjd uninstall         (卸载)"
+    info "快捷命令已就绪: xiaoqian                   (输入 ASN 扫描)"
+    info "                   xiaoqian update            (更新)"
+    info "                   xiaoqian uninstall         (卸载)"
 
     echo ""
     echo -e "${GREEN}${BOLD}[OK] 安装完成，开始运行${NC}"
