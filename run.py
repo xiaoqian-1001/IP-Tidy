@@ -534,6 +534,12 @@ def output_csv(asns):
 
     print(f"\n  结果: {len(lines)} 条 → {output.name}")
 
+    # ── 挂机模式：不启 HTTP 服务，直接写结论到日志 ──
+    if not sys.stdout.isatty():
+        print(f"  下载: cat {output}            # 本地查看")
+        print(f"        scp .../{output.name} .  # 远程下载")
+        return
+
     # ── 提供下载链接（局域网 + 公网双链接） ──
     lan_ip = get_lan_ip()
     port = 8899
