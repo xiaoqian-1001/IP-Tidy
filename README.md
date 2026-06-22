@@ -15,8 +15,9 @@ curl -fsSL https://raw.githubusercontent.com/xiaoqian-1001/ASNIPtest/main/instal
 # 使用
 xiaoqian AS209242              # 单个 ASN
 xiaoqian AS209242,AS3214       # 多个 ASN（逗号）
-xiaoqian AS209242 AS3214       # 多个 ASN（空格）
 xiaoqian AS209242 -p 443,8443  # 自定义端口
+xiaoqian AS209242 -w            # 宽端口模式 (25000+ 端口)
+xiaoqian AS209242 -s            # 扫描后自动测速
 
 # 管理
 xiaoqian update                 # 更新
@@ -42,10 +43,10 @@ graph LR
 | # | 步骤 | 说明 |
 |---|------|------|
 | 1 | ASN -> CIDR | RIPEStat 免费 API 拉取 IPv4 前缀 |
-| 2 | masscan | 自适应速率 SYN 扫描开放端口 |
+| 2 | masscan | 自适应速率 SYN 扫描，XML 输出解析，仅保留 syn-ack 确认 |
 | 3 | cf-scanner | Go 并发 TLS 检测，识别 CF 反代 |
 | 4 | API 精筛 | 外部 API 二次验证，失败自动重试 |
-| 5 | 并行测速 | TCP 延迟 + CF 文件下载带宽 |
+| 5 | 多点测速 | TCP 延迟 + 多 URL 多体积下载测速（1MB/10MB/100MB/CDN） |
 | 6 | 输出 | 生成 CSV，临时 HTTP 服务下载 |
 
 ---
@@ -132,6 +133,20 @@ ASNIPtest/
 ### 环境限制
 
 masscan 需要 `CAP_NET_RAW`，以下环境不可用：NAT 容器、OpenVZ/LXC（无特权模式）、WSL2 默认桥接。建议使用 KVM VPS 或物理机。
+
+---
+
+## 更新日志
+
+### v1.3.0
+- masscan 改用 XML 输出解析，仅保留 `syn-ack` 确认端口，过滤 `rst-ack` 噪音
+- 多点测速：多 URL (1MB/10MB/100MB/CDN) 取最佳带宽
+- 新增 `-w` / `--wide` 宽端口模式 (25000+ 端口)
+
+### v1.2.0
+- 全面架构升级：ScannerConfig 数据类、argparse CLI、多阶段 Dockerfile
+- 修复中间文件残留导致测速读取过期数据
+- 安装脚本 mktemp 加固、卸载确认
 
 ---
 

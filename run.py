@@ -14,6 +14,7 @@ import argparse
 import subprocess
 import urllib.request
 import urllib.error
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -35,6 +36,14 @@ BASE = Path(__file__).parent.resolve()
 CF_SCANNER = BASE / "cf-scanner"
 VERIFY_PY = BASE / "verify.py"
 API_URL = "https://api.090227.xyz/check"
+WIDE_PORTS = "22,80,443,8080,8443,2053,2083,2087,2096,13000-14000,20000-45000"
+
+_SPEED_TESTS = [
+    ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=1048576",   1,   "1MB"),
+    ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=10485760",  10,  "10MB"),
+    ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=100000000", 100, "100MB"),
+    ("cloudflare.cdn.openbsd.org", "https://cloudflare.cdn.openbsd.org/pub/OpenBSD/7.3/src.tar.gz", 0, "CDN"),
+]
 _version = "unknown"
 try:
     _vp = BASE / "VERSION"
@@ -206,7 +215,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
         print("  [FAIL] cidrs.txt 为空，跳过 masscan")
         return 0
 
-    result_file = BASE / "masscan_result.txt"
+    result_file = BASE / "masscan_result.xml"
     if result_file.exists():
         if os.geteuid() == 0:
             result_file.unlink()
@@ -218,7 +227,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
         "masscan", "-iL", str(ip_file),
         "-p", cfg.scan_ports,
         "--rate", str(cfg.masscan_rate),
-        "-oL", str(result_file),
+        "-oX", str(result_file),
         "--wait", "5",
     ]
 
@@ -251,15 +260,39 @@ def step_masscan(cfg: ScannerConfig) -> int:
                         f"{os.getuid()}:{os.getgid()}", str(result_file)], check=False)
 
     open_ports: list[str] = []
-    with open(result_file) as f:
-        for line in f:
-            if line.startswith("#") or not line.strip():
+    ttl_count = 0
+    try:
+        tree = ET.parse(result_file)
+        root = tree.getroot()
+        for host in root.findall("host"):
+            addr = host.find("address")
+            if addr is None:
                 continue
-            parts = line.strip().split()
-            if len(parts) >= 4 and parts[0] == "open":
-                open_ports.append(f"{parts[3]}:{parts[2]}")
-    result_file.write_text("\n".join(open_ports) + "\n")
-    print(f"  开放端口: {len(open_ports)}")
+            ip = addr.get("addr", "")
+            ports_elem = host.find("ports")
+            if ports_elem is None:
+                continue
+            for port in ports_elem.findall("port"):
+                state = port.find("state")
+                if state is None:
+                    continue
+                if state.get("state") != "open":
+                    continue
+                reason = state.get("reason", "")
+                if reason not in ("syn-ack", "synack"):
+                    continue
+                ttl = state.get("reason_ttl", "0")
+                portid = port.get("portid", "")
+                if ip and portid:
+                    open_ports.append(f"{ip}:{portid}")
+                    ttl_count += 1
+    except ET.ParseError:
+        print("  [WARN] XML 解析失败，尝试文本回退")
+        pass
+
+    text_file = BASE / "masscan_result.txt"
+    text_file.write_text("\n".join(open_ports) + "\n")
+    print(f"  开放端口: {len(open_ports)} (syn-ack 确认)")
     return len(open_ports)
 
 
@@ -374,7 +407,7 @@ def _test_one(parts: list[str]) -> tuple[str, int, float]:
     spd = _cf_download(ip, port) if lat > 0 else 0.0
     result = parts[:]
     result[6] = str(lat)
-    result[7] = str(spd)
+    result[7] = str(round(spd, 2))
     return ",".join(result), lat, spd
 
 
@@ -392,16 +425,23 @@ def _tcp_latency(ip: str, port: int) -> int:
 
 
 def _cf_download(ip: str, port: str) -> float:
-    try:
-        r = subprocess.run([
-            "curl", "--connect-to", f"speed.cloudflare.com:443:{ip}:{port}",
-            "-o", "/dev/null", "-s", "-w", "%{speed_download}",
-            "--connect-timeout", "5", "--max-time", "20",
-            "https://speed.cloudflare.com/__down?bytes=10485760",
-        ], capture_output=True, text=True, timeout=25)
-        return round(float(r.stdout.strip() or 0) * 8 / 1_000_000, 2)
-    except (ValueError, subprocess.TimeoutExpired, OSError):
-        return 0.0
+    best = 0.0
+    for host, url, size_mb, _label in _SPEED_TESTS:
+        try:
+            timeout = 15 if size_mb < 10 else 30
+            r = subprocess.run([
+                "curl", "--resolve", f"{host}:443:{ip}",
+                "--connect-to", f"{host}:443:{ip}:{port}",
+                "-o", "/dev/null", "-s", "-w", "%{speed_download}",
+                "--connect-timeout", "5", "--max-time", str(timeout),
+                url,
+            ], capture_output=True, text=True, timeout=timeout + 5)
+            mbps = round(float(r.stdout.strip() or 0) * 8 / 1_000_000, 2)
+            if mbps > best:
+                best = mbps
+        except (ValueError, subprocess.TimeoutExpired, OSError):
+            continue
+    return best
 
 
 def output_csv(asns: list[str]) -> None:
@@ -496,8 +536,8 @@ def _parse_asns(raw_args: list[str]) -> list[str]:
         filtered = []
         i = 0
         while i < len(raw_args):
-            if raw_args[i] == "-p":
-                i += 2
+            if raw_args[i] in ("-p", "-w"):
+                i += 2 if raw_args[i] == "-p" else 1
             else:
                 filtered.append(raw_args[i])
                 i += 1
@@ -532,6 +572,8 @@ def main() -> None:
                         help="自定义扫描端口 (如 443 或 80,443 或 8000-9000)")
     parser.add_argument("-s", "--speed", action="store_true",
                         help="扫描完成后自动测速")
+    parser.add_argument("-w", "--wide", action="store_true",
+                        help=f"宽端口模式: {WIDE_PORTS}")
     parser.add_argument("-v", "--version", action="version",
                         version=f"ASNIPtest {VERSION}")
     a = parser.parse_args()
@@ -551,6 +593,10 @@ def main() -> None:
             print(f"  [FAIL] 无效端口: {a.ports}")
             sys.exit(1)
         print(f"  自定义端口: {cfg.scan_ports}")
+    elif a.wide:
+        cfg.scan_ports = WIDE_PORTS
+        cfg.masscan_rate = max(500, cfg.masscan_rate // 4)
+        print(f"  宽端口模式: {len(WIDE_PORTS.split(','))} 段 ({cfg.masscan_rate} pps)")
     elif not sys.argv[1:] and not a.asns:
         # 交互模式：可选自定义端口
         print(f"  默认端口: {cfg.scan_ports}")
@@ -592,7 +638,7 @@ def main() -> None:
 
     # 清理上次运行的中间文件，防止残留数据污染
     for stale in ("cidrs.txt", "masscan_result.txt",
-                  "cf_hits.txt", "verified.txt"):
+                  "masscan_result.xml", "cf_hits.txt", "verified.txt"):
         p = BASE / stale
         try:
             if p.exists():

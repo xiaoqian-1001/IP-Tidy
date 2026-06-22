@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-const version = "1.2.0"
+const version = "1.3.0"
 
 var (
 	inputFile   = flag.String("i", "", "IP:port list file (required)")
