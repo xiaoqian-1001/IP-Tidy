@@ -1,236 +1,185 @@
 # ASNIPtest
 
-从 **ASN 编号** 出发，自动完成 IP 段拉取 → 端口扫描 → Cloudflare 反代节点检测，输出可用 CF 节点 CSV。
+> ASN -> CIDR -> masscan -> Cloudflare 反代节点检测 -> CSV 输出
 
----
-
-## 目录
-
-- [快速开始](#快速开始)
-- [安装](#安装)
-  - [Linux / macOS](#linux--macos)
-  - [Windows（WSL2）](#windowswsl2)
-- [使用](#使用)
-  - [命令行模式](#命令行模式)
-  - [交互模式](#交互模式)
-- [工作流程](#工作流程)
-- [输出格式](#输出格式)
-- [硬件自适应](#硬件自适应)
-- [依赖](#依赖)
-- [卸载](#卸载)
+一条命令从 ASN 编号出发，自动发现该 ASN 下所有 Cloudflare 可用节点。
 
 ---
 
 ## 快速开始
 
-**Linux / macOS**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/install.sh | bash
+# 安装（自动处理所有依赖）
+curl -fsSL https://raw.githubusercontent.com/xiaoqian-1001/ASNIPtest/main/install.sh | bash
+
+# 使用
+xiaoqian AS209242              # 单个 ASN
+xiaoqian AS209242,AS3214       # 多个 ASN（逗号）
+xiaoqian AS209242 -p 443,8443  # 自定义端口
+xiaoqian AS209242 -w            # 宽端口模式 (55000+ 端口)
+xiaoqian AS209242 -R            # 随机 5 端口快速探测
+xiaoqian AS209242 -d            # 深度扫描 (命中 IP 追加宽端口)
+xiaoqian AS209242 -s            # 扫描后自动测速
+xiaoqian AS209242 -w -d -s      # 组合使用
+xiaoqian AS209242 -r 4000       # 指定发包速率
+
+# 断点续扫
+xiaoqian AS209242 --skip-masscan # 跳过 masscan, 使用已有结果
+
+# 管理
+xiaoqian update                 # 更新
+xiaoqian uninstall              # 卸载
 ```
 
-**Windows**（需先装 WSL2）
-```powershell
-# PowerShell 管理员模式，装完重启
-wsl --install
-
-# 重启后进 Ubuntu 终端
-curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/install.sh | bash
-```
-
----
-
-## 安装
-
-### Linux / macOS
-
-一条命令安装所有依赖（masscan、prips）并注册全局命令：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/install.sh | bash
-```
-
-安装完成后，在任意目录输入 `cmtjd` 即可启动。
-
-> **手动安装**：如果不想用一键脚本，可以 clone 仓库后手动运行 `python3 run.py`。需自行安装 masscan 和 prips。
-
-### Windows（WSL2）
-
-Windows 10/11 自带 WSL2，装上就能用 Linux 环境：
-
-**第一步：安装 WSL2**
-
-PowerShell 管理员模式运行：
-
-```powershell
-wsl --install
-```
-
-系统会自动安装 Ubuntu + WSL2 内核。完成后**重启电脑**。
-
-**第二步：安装 ASNIPtest**
-
-重启后开始菜单会多一个「Ubuntu」应用，打开它，输入：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/install.sh | bash
-```
-
-> WSL2 默认使用桥接模式，正式测试时需调整为 NAT 模式才能正常使用 masscan。
-
----
-
-## 使用
-
-### 命令行模式
-
-直接指定 ASN 编号启动扫描：
-
-```bash
-cmtjd AS209242            # 单个 ASN
-cmtjd AS209242,AS3214     # 多个 ASN（逗号分隔）
-cmtjd AS209242 AS3214     # 多个 ASN（空格分隔）
-```
-
-> 手动运行时用 `python3 run.py` 代替 `cmtjd`。
-
-### 后台运行（SSH 断线不杀）
-
-长扫描（5-30分钟），担心 SSH 断线可以用 `screen`：
-
-```bash
-# 安装 screen（仅首次）
-apt install -y screen
-
-# 启动 screen 会话
-screen -S scan
-
-# 在里面正常跑 cmtjd AS209242
-# 按 Ctrl+A 再按 D 断开（进程继续跑）
-```
-
-下次 SSH 连回来，`screen -r scan` 即可恢复查看。
-
-> 如果记不清会话名，`screen -ls` 列出所有会话。
-
-### 交互模式
-
-不带参数运行，进入交互提示：
-
-```bash
-cmtjd
-```
-
-```
-  硬件: 4核 2048MB → masscan 4000pps ...
-
-  本机公网 IP: 1.2.3.4
-  地区: Tokyo, JP  运营商: xxx
-
-  输入 ASN 编号 (多个用逗号分隔): _
-```
-
-输入 ASN 后自动开始扫描。完成后自动提供 CSV 下载链接。
-
-> 扫描完成后提供手动测速选项（TCP 延迟 + CF 下载带宽），用户可选择是否测速。
+无参数运行进入交互模式，按提示输入即可。完成后自动提供 CSV 下载链接。
 
 ---
 
 ## 工作流程
 
+```mermaid
+graph LR
+    A["ASN"] --> B["RIPEStat API<br/>CIDR 前缀 (7日缓存)"]
+    B --> C["masscan<br/>SYN 端口扫描"]
+    C --> D["扫描+精筛<br/>cf-scanner TLS + API 并行"]
+    D --> E["并行测速<br/>延迟 + 带宽"]
+    E --> F["CSV + HTTP 下载"]
 ```
-用户输入 ASN
-    │
-    ▼
-┌──────────────────────┐
-│ 1. ASN → CIDR        │  RIPEStat API 查询该 ASN 广播的所有 IPv4 前缀
-├──────────────────────┤
-│ 2. masscan 端口扫描   │  高速 SYN 扫描（CIDR 直接传入，跳过 prips 展开）
-├──────────────────────┤
-│ 3. cf-scanner 粗筛   │  TLS 握手检测，命中 Cloudflare 反代节点
-├──────────────────────┤
-│ 4. API 精筛          │  api.090227.xyz/check 二次验证（TLS + 数据中心 + 地区）
-├──────────────────────┤
-│ 5. 手动测速（可选）    │  TCP 延迟 + CF 文件下载速度
-├──────────────────────┤
-│ 输出 CSV + 下载链接   │  临时 HTTP 服务提供文件下载
-└──────────────────────┘
-```
+
+| # | 步骤 | 说明 |
+|---|------|------|
+| 1 | ASN -> CIDR | RIPEStat 免费 API 拉取 IPv4 前缀，7天缓存 |
+| 2 | masscan | 自适应速率 SYN 扫描，XML 输出解析，仅保留 syn-ack 确认 |
+| 3 | 扫描+精筛 | Go cf-scanner TLS 检测 + API 二次验证，流式并行执行 |
+| 4 | 深度扫描 (可选) | 对命中 IP 追加宽端口扫描，两阶段产出最大化 |
+| 5 | 多点测速 (可选) | TCP 延迟 + 多 URL 多体积下载测速 |
+| 6 | 输出 | 生成 CSV，临时 HTTP 服务下载 |
+
+### 深度扫描 (`-d`)
+
+第一阶段正常扫默认端口，第二阶段对 cf-scanner 命中的 IP 追加宽端口扫描（只扫命中 IP，不全量 CIDR）。适合在不显著增加扫描时间的前提下最大化节点产量。
 
 ---
 
-## 输出格式
+## 安装方式
 
-运行完成后生成 CSV 文件并启动临时下载服务：
+| 方式 | 命令 |
+|------|------|
+| 一键脚本 | `curl -fsSL https://raw.githubusercontent.com/E13815332/ASNIPtest/main/install.sh \| bash` |
+| 手动安装 | `git clone --depth 1 https://github.com/xiaoqian-1001/ASNIPtest.git ~/ASNIPtest && cd ~/ASNIPtest/cf-scanner-src && go build -o ../cf-scanner main.go` |
+| Docker | `docker build -t asniptest . && docker run --rm --cap-add=NET_RAW --network host asniptest AS209242` |
+
+**Windows** 用户先装 WSL2：`wsl --install`，重启后在 Ubuntu 终端执行一键安装。
+
+---
+
+## 输出示例
 
 ```
-📥 下载链接 (临时, 按回车关闭):
-http://1.2.3.4:8899/output_AS209242_20260617_120000.csv
+  [download] 下载链接 (按回车关闭):
+  http://192.168.1.100:8899/output_AS209242_20260101_120000.csv  (本机)
+  http://1.2.3.4:8899/output_AS209242_20260101_120000.csv        (公网)
 
-结果: 42 条 → output_AS209242_20260617_120000.csv
+  结果: 42 条 -> output_AS209242_20260101_120000.csv
 ```
 
-**CSV 列说明：**
+| 列 | 示例 |
+|---|---|
+| IP地址 | `162.159.192.1` |
+| 端口 | `443` |
+| TLS | `TRUE` |
+| 数据中心 | `HKG` |
+| 地区 | `HK` |
+| 城市 | `Hong Kong` |
+| 网络延迟 | `42` (ms) |
+| 下载速度 | `5.12` (Mbps) |
+| ASN | `AS209242` |
 
-| 列 | 说明 | 示例 |
-|---|---|---|
-| IP地址 | Cloudflare 节点 IP | `162.159.192.1` |
-| 端口 | TLS 端口 | `443` |
-| TLS | TLS 版本 | `TRUE` |
-| 数据中心 | CF 数据中心代号 | `HKG` |
-| 地区 | 国家/地区代码 | `HK` |
-| 城市 | 城市名 | `Hong Kong` |
-| 网络延迟 | TCP 延迟 (ms) | `42` |
-| 下载速度 | CF 下载带宽 (Mbps) | `5.12` |
-| ASN | 源 ASN 编号 | `AS209242` |
+---
 
-> 下载链接自动检测本机 IP，同时显示局域网和公网地址（公网不同时）。按 **回车** 关闭下载服务。
+## 项目结构
+
+```
+ASNIPtest/
+├── run.py                 主入口，流程编排
+├── verify.py              API 精筛（含重试）
+├── lib/utils.py           公共工具（进度条/IP检测/端口解析）
+├── cf-scanner-src/        Go 源码（TLS 握手检测）
+├── cf-scanner             编译产物（gitignore）
+├── install.sh             一键安装
+├── uninstall.sh           一键卸载
+├── ports.txt              TLS 端口列表
+├── Dockerfile
+└── VERSION
+```
 
 ---
 
 ## 硬件自适应
 
-启动时自动探测网卡实际发包能力（取最优速率的 80%），同时根据 CPU 核数和内存调整并发：
+启动时探测网卡发包上限，按 CPU 核数和内存自动调参：
 
-| 硬件配置 | masscan 速率 | cf-scanner 并发 | API 并发 |
-|---|---|---|---|
-| 任何配置 | 自动实测网卡上限×80% | 200~500 | 8~32 |
-
-> 速率探测耗时约 30 秒，使用前 50 个 CIDR 样本以递增速率测试，找到网卡瓶颈后稳定运行。探测失败时回退 CPU×1000 估算。cf-scanner 并发最低 200，最高 500。
+| 参数 | 策略 |
+|------|------|
+| masscan 速率 | 实测网卡上限 x 80%，失败回退 CPU x 1000 |
+| cf-scanner 并发 | `max(200, min(cores * 100, 500))` |
+| API 并发 | `min(cores * 16, 32)` |
+| 测速并发 | 等于 API 并发，全部节点并行 |
 
 ---
 
 ## 依赖
 
-| 工具 | 用途 | 安装方式 |
-|---|---|---|
-| [masscan](https://github.com/robertdavidgraham/masscan) | 高速端口扫描 | `apt install masscan` 或源码编译 |
-| cf-scanner | CF 反代节点检测 | 内置，自动编译 |
-| [RIPEStat API](https://stat.ripe.net/) | ASN → CIDR | 免费公开，无需注册 |
+| 组件 | 用途 |
+|------|------|
+| [masscan](https://github.com/robertdavidgraham/masscan) | 高速 SYN 端口扫描 |
+| Go >= 1.22 | 编译 cf-scanner |
+| Python >= 3.8 | 流程编排、API 验证 |
+| dnsutils | DNS 方式获取公网 IP |
+| [RIPEStat API](https://stat.ripe.net/) | ASN -> CIDR（免费公开） |
 
-> `install.sh` 自动处理所有依赖。
+> `install.sh` 自动安装所有依赖。
 
-### 不支持的环境
+### 环境限制
 
-masscan 依赖 **raw socket**（CAP_NET_RAW），以下环境有限制：
-
-- ❌ NAT 容器（独角鲸/小鲸等，缺少 CAP_NET_RAW）
-- ❌ OpenVZ / LXC 未开启特权模式
-- ⚠️ WSL2 需切换为 NAT 网络模式（默认桥接不支持 raw socket）
-
-> 换到 KVM VPS 或物理机即可正常使用。
+masscan 需要 `CAP_NET_RAW`，以下环境不可用：NAT 容器、OpenVZ/LXC（无特权模式）、WSL2 默认桥接。建议使用 KVM VPS 或物理机。
 
 ---
 
-## 卸载
+## 更新日志
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/e13815332/ASNIPtest/main/uninstall.sh | bash
-```
+### v1.5.0
+- 流式流水线: cf-scanner 与 API 精筛合并执行，后台并行缩短等待
+- TLS 握手检测: cf-scanner 改用 TLS 握手替代完整 HTTP (RSS 1.4GB->33MB)
+- 内存优化: cf-scanner ForceAttemptHTTP2:false + MaxIdleConns + 定时 GC
+- 流式写入: masscan 结果直接写临时文件 atomic replace，防 OOM
+- 深度扫描 (`-d`): 对 CF 命中 IP 追加宽端口，两阶段产出最大化
+- ASN CIDR 缓存: RIPEStat API 结果 7 天缓存，API 失败回退上次数据
+- 断点续扫 (`--skip-masscan`): 跳过 masscan，使用已有结果继续
+- 端口批次拆分: 超大范围 (10000-65535) 自动拆分为 5000 端口/批，进度平滑
+- 速率探测优化: 8s -> 4s + sudo 预检，本机 Linux 启动不再卡顿
+- 非 root 权限修复: sudo -n + stdin=DEVNULL 防止密码提示阻塞
+- CLI 美化: ANSI 彩色输出 + 启动横幅 + 步骤标题
 
-这会删除 `cmtjd` 命令和 `~/ASNIPtest` 目录。
+### v1.4.0
+- 宽端口扩展: 912 + 10000-65535，覆盖完整高位区间
+- 随机端口优化: 权重向 20000-60000 倾斜 10 倍 + 自动去重
+- 分批扫描: 超 5000 端口自动拆分批次，防止内存爆炸
+- 动态并发: 实时监控 CPU/内存，负载过高自动下调线数
+
+### v1.3.0
+- masscan 改用 XML 输出解析，仅保留 `syn-ack` 确认端口，过滤 `rst-ack` 噪音
+- 多点测速：多 URL (1MB/10MB/100MB/CDN) 取最佳带宽
+- 新增 `-w` / `--wide` 宽端口模式 (55000+ 端口)
+
+### v1.2.0
+- 全面架构升级：ScannerConfig 数据类、argparse CLI、多阶段 Dockerfile
+- 修复中间文件残留导致测速读取过期数据
+- 安装脚本 mktemp 加固、卸载确认
 
 ---
 
 ## 鸣谢
 
-- [**cmliu**](https://github.com/cmliu) — 提供 [CF-Workers-CheckProxyIP](https://github.com/cmliu/CF-Workers-CheckProxyIP) 公共 API 接口 (`api.090227.xyz/check`)，用于节点二次验证。
+- [e13815332](https://github.com/e13815332) -- 原作者，项目架构与核心扫描流程
+- [cmliu](https://github.com/cmliu) -- [CF-Workers-CheckProxyIP](https://github.com/cmliu/CF-Workers-CheckProxyIP) 公共 API
