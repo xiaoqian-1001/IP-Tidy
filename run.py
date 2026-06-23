@@ -436,7 +436,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
             "-p", batch_ports,
             "--rate", str(cfg.masscan_rate),
             "-oX", str(batch_xml),
-            "--wait", "5",
+            "--wait", "3",
         ]
 
         prefix = f"[{bi + 1}/{batch_total}] " if batch_total > 1 else ""
@@ -684,7 +684,7 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
             "-p", batch_ports,
             "--rate", str(cfg.masscan_rate),
             "-oX", str(batch_xml),
-            "--wait", "5",
+            "--wait", "3",
         ]
         prefix = f"[{bi + 1}/{len(batches)}] " if len(batches) > 1 else ""
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
