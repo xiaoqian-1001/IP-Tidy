@@ -721,6 +721,7 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
                            stdin=subprocess.DEVNULL, check=False)
 
         # 解析 XML
+        batch_before = len(all_open)
         try:
             tree = ET.parse(batch_xml)
             for host in tree.getroot().findall("host"):
@@ -743,6 +744,10 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
         except ET.ParseError:
             pass
 
+        new_in_batch = len(all_open) - batch_before
+        pfx = f"[{bi + 1}/{len(batches)}] " if len(batches) > 1 else ""
+        print(f"  {pfx}端口开放: +{new_in_batch} (累计 {len(all_open)})", flush=True)
+
         if len(batches) > 1:
             try:
                 batch_xml.unlink()
@@ -751,13 +756,14 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
 
     result_file = BASE / "masscan_result.txt"
     result_file.write_text("\n".join(all_open) + "\n")
-    print(f"  新开放端口: {len(all_open)}")
+    print(c(f"  深度 masscan 完成: {len(all_open)} 开放端口", C.C))
 
     if not all_open:
         print("  无新增开放端口")
         return len(saved)
 
     # ── 对深度结果跑 cf-scanner + 精筛 ──
+    print(c("  CF 检测中...", C.D))
     hits, _passed = _pipeline(cfg)
 
     # 合并结果
@@ -781,7 +787,10 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
     verified_file.write_text("\n".join(result_lines) + "\n")
 
     new_found = len(merged) - len(saved)
-    print(f"  合并结果: {len(merged)} 条 (新增 {new_found})")
+    if new_found > 0:
+        print(c(f"  合并: {len(saved)} -> {len(merged)} 条 (新增 {new_found})", C.G))
+    else:
+        print(c(f"  合并: 无新增 (维持 {len(saved)} 条)", C.Y))
     return len(merged)
 
 
