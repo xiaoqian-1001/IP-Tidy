@@ -11,7 +11,6 @@ import time
 import json
 import random
 import socket
-import select
 import threading
 import argparse
 import subprocess
@@ -408,20 +407,29 @@ def step_fetch_prefixes(cfg: ScannerConfig, asns: list[str]) -> list[str]:
 
 
 def _read_masscan_stderr(proc, prefix: str = "") -> list[str]:
-    """读取 masscan stderr，用 select 轮询避免子进程持有管道导致阻塞。"""
+    """后台线程读 stderr + 主线程轮询进度，跨平台兼容 (Unix/Windows)。"""
     lines: list[str] = []
     t0 = time.time()
     last_progress = t0
-    fileno = proc.stderr.fileno()
 
+    # 后台线程阻塞读 stderr，写入共享列表
+    def _reader():
+        try:
+            for line in proc.stderr:
+                lines.append(line)
+        except (ValueError, OSError):
+            pass
+
+    t = threading.Thread(target=_reader, daemon=True)
+    t.start()
+
+    idx = 0
     while True:
-        ready, _, _ = select.select([fileno], [], [], 1.0)
-        if ready:
-            line = proc.stderr.readline()
-            if not line:
-                break
-            lines.append(line)
-            m = re.search(r"(\d+\.?\d*)%\s*done", line)
+        t.join(timeout=0.3)
+
+        # 解析新行中的进度
+        while idx < len(lines):
+            m = re.search(r"(\d+\.?\d*)%\s*done", lines[idx])
             if m:
                 pct = min(float(m.group(1)), 100)
                 last_progress = time.time()
@@ -429,15 +437,24 @@ def _read_masscan_stderr(proc, prefix: str = "") -> list[str]:
                 eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
                 extra = f" | ETA {int(eta // 60)}m {int(eta % 60)}s" if pct > 0.5 else ""
                 write_progress(pct, prefix + extra)
-        else:
-            ret = proc.poll()
-            if ret is not None:
-                # 进程已退出，不阻塞读残留 stderr（子进程可能持有管道）
-                break
-            if time.time() - last_progress > 60:
-                proc.kill()
-                proc.wait()
-                break
+            idx += 1
+
+        # 读线程完成 (stderr 已关闭)
+        if not t.is_alive():
+            break
+
+        # 进程已退出，等待线程收尾
+        if proc.poll() is not None:
+            t.join(timeout=2.0)
+            # 线程可能卡在阻塞读上，直接 break（daemon 线程不阻止退出）
+            break
+
+        # 60s 无进度 → kill
+        if time.time() - last_progress > 60:
+            proc.kill()
+            proc.wait()
+            break
+
     return lines
 
 
