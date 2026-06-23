@@ -1072,15 +1072,22 @@ def main() -> None:
 
     total_steps = 2 if a.skip_masscan else 3
     do_speed = a.speed
+    do_deep = a.deep
     if not do_speed:
         try:
             ch = input("\n  是否测速？(y/n，默认跳过): ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             ch = ""
         do_speed = ch == "y"
+    if not do_deep and not sys.argv[1:]:
+        try:
+            ch = input("  是否深度扫描？(y/n/d=仅深度，默认跳过): ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            ch = ""
+        do_deep = ch in ("y", "d")
     if do_speed:
         total_steps += 1
-    if a.deep:
+    if do_deep:
         total_steps += 1
     if not do_speed:
         print("  跳过测速\n")
@@ -1096,7 +1103,7 @@ def main() -> None:
         steps.append((f"{step_num}. masscan", lambda: step_masscan(cfg)))
     step_num += 1
     steps.append((f"{step_num}. 扫描+精筛", lambda: _pipeline(cfg)))
-    if a.deep:
+    if do_deep:
         step_num += 1
         steps.append((f"{step_num}. 深度扫描", lambda: step_deep_scan(cfg)))
     if do_speed:
