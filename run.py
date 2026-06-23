@@ -11,6 +11,7 @@ import time
 import json
 import random
 import socket
+import select
 import threading
 import argparse
 import subprocess
@@ -406,6 +407,47 @@ def step_fetch_prefixes(cfg: ScannerConfig, asns: list[str]) -> list[str]:
     return cidrs
 
 
+def _read_masscan_stderr(proc, prefix: str = "") -> list[str]:
+    """读取 masscan stderr，用 select 轮询避免子进程持有管道导致阻塞。"""
+    lines: list[str] = []
+    t0 = time.time()
+    last_progress = t0
+    fileno = proc.stderr.fileno()
+
+    while True:
+        ready, _, _ = select.select([fileno], [], [], 1.0)
+        if ready:
+            line = proc.stderr.readline()
+            if not line:
+                break
+            lines.append(line)
+            m = re.search(r"(\d+\.?\d*)%\s*done", line)
+            if m:
+                pct = min(float(m.group(1)), 100)
+                last_progress = time.time()
+                elapsed = last_progress - t0
+                eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
+                extra = f" | ETA {int(eta // 60)}m {int(eta % 60)}s" if pct > 0.5 else ""
+                write_progress(pct, prefix + extra)
+        else:
+            ret = proc.poll()
+            if ret is not None:
+                try:
+                    rest = proc.stderr.read()
+                    if rest:
+                        for rl in rest.splitlines(keepends=True):
+                            if rl:
+                                lines.append(rl)
+                except Exception:
+                    pass
+                break
+            if time.time() - last_progress > 60:
+                proc.kill()
+                proc.wait()
+                break
+    return lines
+
+
 def step_masscan(cfg: ScannerConfig) -> int:
     ip_file = BASE / "cidrs.txt"
     if not ip_file.exists() or ip_file.stat().st_size == 0:
@@ -443,17 +485,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
                                 stdin=subprocess.DEVNULL,
                                 stderr=subprocess.PIPE, text=True, bufsize=1)
-        stderr_lines: list[str] = []
-        t0 = time.time()
-        for line in proc.stderr:
-            stderr_lines.append(line)
-            m = re.search(r"(\d+\.?\d*)%\s*done", line)
-            if m:
-                pct = min(float(m.group(1)), 100)
-                elapsed = time.time() - t0
-                eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
-                extra = f" | ETA {int(eta // 60)}m {int(eta % 60)}s" if pct > 0.5 else ""
-                write_progress(pct, prefix + extra)
+        stderr_lines = _read_masscan_stderr(proc, prefix)
         proc.wait()
 
         if proc.returncode != 0:
@@ -692,17 +724,7 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
                                 stdin=subprocess.DEVNULL,
                                 stderr=subprocess.PIPE, text=True, bufsize=1)
-        stderr_lines: list[str] = []
-        t0 = time.time()
-        for line in proc.stderr:
-            stderr_lines.append(line)
-            m = re.search(r"(\d+\.?\d*)%\s*done", line)
-            if m:
-                pct = min(float(m.group(1)), 100)
-                elapsed = time.time() - t0
-                eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
-                extra = f" | ETA {int(eta // 60)}m {int(eta % 60)}s" if pct > 0.5 else ""
-                write_progress(pct, prefix + extra)
+        stderr_lines = _read_masscan_stderr(proc, prefix)
         proc.wait()
 
         if proc.returncode != 0:
