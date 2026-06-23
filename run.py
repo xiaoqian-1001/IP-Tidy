@@ -1413,9 +1413,9 @@ def main() -> None:
                 cidrs = [l.strip() for l in f if l.strip()]
             with open(csv_path, "w") as f:
                 f.write("CIDR,IP数量,协议\n")
-                for c in cidrs:
-                    cnt = _cidr_count([c])
-                    f.write(f"{c},{cnt},IPv6\n")
+                for cidr in cidrs:
+                    cnt = _cidr_count([cidr])
+                    f.write(f"{cidr},{cnt},IPv6\n")
             print(c(f"\n  IPv6 CIDR: {len(cidrs)} 段 -> {csv_path.name}", C.G))
 
     print_result_header(
