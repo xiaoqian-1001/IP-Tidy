@@ -194,6 +194,24 @@ def probe_masscan_rate() -> int:
         cores = os.cpu_count() or 1
         return max(1000, min(cores * 1000, 16000))
 
+    # 预检: sudo -n 是否可用
+    sudo = [] if os.geteuid() == 0 else ["sudo", "-n"]
+    sudo_ok = os.geteuid() == 0
+    if not sudo_ok:
+        try:
+            subprocess.run(["sudo", "-n", "true"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           stdin=subprocess.DEVNULL, timeout=2, check=True)
+            sudo_ok = True
+        except Exception:
+            pass
+
+    if not sudo_ok:
+        cores = os.cpu_count() or 1
+        return max(1000, min(cores * 1000, 16000))
+
+    print("  探测 masscan 最佳速率...", end="", flush=True)
+
     sample_cidrs = ["1.1.1.0/24", "8.8.8.0/24", "9.9.9.0/24"]
     tmp_cidr = "/tmp/.masscan_rate_test"
     tx_path = f"/sys/class/net/{iface}/statistics/tx_packets"
@@ -201,8 +219,7 @@ def probe_masscan_rate() -> int:
     with open(tmp_cidr, "w") as f:
         f.write("\n".join(sample_cidrs))
 
-    sudo = [] if os.geteuid() == 0 else ["sudo", "-n"]
-    best_rate, test_rate, probe_sec = 2000, 1000, 8
+    best_rate, test_rate, probe_sec = 2000, 1000, 4
     try:
         while test_rate <= 200000:
             try:
@@ -216,13 +233,24 @@ def probe_masscan_rate() -> int:
                         "--rate", str(test_rate), "-oX", "/dev/null"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 stdin=subprocess.DEVNULL)
-            time.sleep(probe_sec)
-            proc.terminate()
-            try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
+
+            # 每 0.5s 检查进程健康，masscan 失败则提前退出
+            alive = True
+            for _ in range(probe_sec * 2):
+                time.sleep(0.5)
+                rc = proc.poll()
+                if rc is not None:
+                    alive = rc == 0
+                    break
+
+            if not alive:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                break
 
             try:
                 with open(tx_path) as f:
@@ -245,6 +273,7 @@ def probe_masscan_rate() -> int:
             os.remove(tmp_cidr)
         except OSError:
             pass
+    print(f" {best_rate} pps")
     return best_rate
 
 
