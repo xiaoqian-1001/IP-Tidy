@@ -432,14 +432,7 @@ def _read_masscan_stderr(proc, prefix: str = "") -> list[str]:
         else:
             ret = proc.poll()
             if ret is not None:
-                try:
-                    rest = proc.stderr.read()
-                    if rest:
-                        for rl in rest.splitlines(keepends=True):
-                            if rl:
-                                lines.append(rl)
-                except Exception:
-                    pass
+                # 进程已退出，不阻塞读残留 stderr（子进程可能持有管道）
                 break
             if time.time() - last_progress > 60:
                 proc.kill()
