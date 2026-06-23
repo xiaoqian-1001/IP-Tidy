@@ -1081,10 +1081,10 @@ def main() -> None:
         do_speed = ch == "y"
     if not do_deep and not sys.argv[1:]:
         try:
-            ch = input("  是否深度扫描？(y/n/d=仅深度，默认跳过): ").strip().lower()
+            ch = input("  是否深度扫描？(y/n，默认跳过): ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             ch = ""
-        do_deep = ch in ("y", "d")
+        do_deep = ch == "y"
     if do_speed:
         total_steps += 1
     if do_deep:
