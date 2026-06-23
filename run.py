@@ -424,6 +424,7 @@ def _read_masscan_stderr(proc, prefix: str = "") -> list[str]:
     t.start()
 
     idx = 0
+    seen_100 = False
     while True:
         t.join(timeout=0.3)
 
@@ -432,6 +433,8 @@ def _read_masscan_stderr(proc, prefix: str = "") -> list[str]:
             m = re.search(r"(\d+\.?\d*)%\s*done", lines[idx])
             if m:
                 pct = min(float(m.group(1)), 100)
+                if pct >= 100:
+                    seen_100 = True
                 last_progress = time.time()
                 elapsed = last_progress - t0
                 eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
@@ -446,7 +449,10 @@ def _read_masscan_stderr(proc, prefix: str = "") -> list[str]:
         # 进程已退出，等待线程收尾
         if proc.poll() is not None:
             t.join(timeout=2.0)
-            # 线程可能卡在阻塞读上，直接 break（daemon 线程不阻止退出）
+            break
+
+        # 100% 后最久等 10s 兜底 (Windows poll/pipe 可能不可靠)
+        if seen_100 and time.time() - last_progress > 10:
             break
 
         # 60s 无进度 → kill
