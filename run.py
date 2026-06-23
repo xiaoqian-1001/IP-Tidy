@@ -1256,18 +1256,61 @@ def main() -> None:
         passed_count
     )
 
-    if csv_path and csv_path.exists():
-        print(c(f"  [CSV]  {csv_path}", C.LB))
-
-    lan_ip = get_lan_ip()
-    port = 8899
-    pub = get_public_ip()
-    if pub and pub != "127.0.0.1":
-        print(c(f"  [LINK] http://{pub}:{port}/", C.LB))
-
     print_sep("-", C.W)
     print_total_time(time.time() - main_start)
-    print(c("  按回车退出...", C.W))
+
+    if csv_path and csv_path.exists():
+        _serve_download(csv_path)
+
+
+def _serve_download(file_path: Path) -> None:
+    """启动 HTTP 下载服务，提供 CSV 文件下载链接"""
+    lan_ip = get_lan_ip()
+    port = 8899
+
+    if not port_is_free(port):
+        print(c(f"  端口 {port} 被占用，尝试释放...", C.Y))
+        if kill_port_process(port) and port_is_free(port):
+            print(c(f"  已释放端口 {port}", C.G))
+        else:
+            while not port_is_free(port) and port < 9900:
+                port += 1
+            if port >= 9900:
+                print(c("  无可用端口，跳过下载服务", C.Y))
+                print(c(f"  [CSV] {file_path}", C.LB))
+                return
+
+    server: Optional[subprocess.Popen] = None
+    try:
+        print()
+        print_sep("=", C.LB)
+        print(c("  Download - 按回车关闭服务", C.LG))
+        print(c(f"  http://{lan_ip}:{port}/{file_path.name}", C.LB))
+        pub = get_public_ip()
+        if pub not in ("127.0.0.1", lan_ip):
+            print(c(f"  http://{pub}:{port}/{file_path.name}", C.LB))
+        print()
+        server = subprocess.Popen(
+            [sys.executable, "-m", "http.server", str(port),
+             "--directory", str(BASE)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if sys.stdin.isatty():
+            input()
+        else:
+            print(c("  (非交互终端，按 Ctrl+C 停止服务)", C.W))
+            try:
+                server.wait()
+            except KeyboardInterrupt:
+                pass
+    except (EOFError, KeyboardInterrupt):
+        pass
+    finally:
+        if server and server.poll() is None:
+            server.terminate()
+            try:
+                server.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                server.kill()
 
 
 if __name__ == "__main__":
