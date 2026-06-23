@@ -129,7 +129,7 @@ ensure_go() {
 
 # ── 包安装 ──
 install_pkgs() {
-    local pkgs=("masscan" "dnsutils" "python3" "git")
+    local pkgs=("masscan" "dnsutils" "python3" "python3-pip" "git")
     local to_install=()
     for pkg in "${pkgs[@]}"; do
         command -v "$pkg" &>/dev/null && continue
@@ -172,6 +172,9 @@ do_install() {
 
     info "检查系统依赖..."
     install_pkgs
+
+    info "安装 Python 依赖 (maxminddb)..."
+    pip3 install --break-system-packages maxminddb 2>/dev/null || pip3 install maxminddb 2>/dev/null || warn "maxminddb 安装失败，离线 IP 查询不可用"
 
     local go_ver
     go_ver=$(go_required_version)

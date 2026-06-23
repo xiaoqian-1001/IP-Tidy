@@ -37,6 +37,7 @@ from lib.utils import (
     c, C, print_banner, print_step, print_sep,
     print_hardware_info, print_result_header, print_total_time,
 )
+from lib.geoip import lookup as geo_lookup, is_available as geo_available, geo_update_interactive
 
 BASE = Path(__file__).parent.resolve()
 CF_SCANNER = BASE / "cf-scanner"
@@ -322,7 +323,20 @@ def init_runtime() -> ScannerConfig:
         lines = [l.strip() for l in f if l.strip() and not l.startswith("#")]
     cfg.scan_ports = ",".join(lines)
 
-    cfg.global_ip, cfg.global_country, cfg.global_isp, cfg.global_city = detect_isp(get_public_ip())
+    pub_ip = get_public_ip()
+
+    # 离线优先: MaxMind GeoLite2
+    if geo_available():
+        g = geo_lookup(pub_ip)
+        cfg.global_ip = pub_ip
+        cfg.global_country = g.get("country", "")
+        cfg.global_city = g.get("city", "")
+        cfg.global_isp = g.get("isp", "")
+        print(c("  [GeoIP] 离线数据库 (MaxMind GeoLite2)", C.W))
+        print(f"  地区: {cfg.global_city}, {cfg.global_country}  机构: {cfg.global_isp}")
+    else:
+        cfg.global_ip, cfg.global_country, cfg.global_isp, cfg.global_city = detect_isp(pub_ip)
+
     return cfg
 
 
@@ -1098,7 +1112,18 @@ def main() -> None:
                         help="深度扫描: 对 CF 命中的 IP 追加 55546 个端口扫描 (发现隐藏节点)")
     parser.add_argument("-v", "--version", action="version",
                         version=f"IP-Tidy {VERSION}")
+    parser.add_argument("-g", "--geo-update", action="store_true",
+                        help="下载/更新 MaxMind GeoLite2 离线数据库")
     a = parser.parse_args()
+
+    if a.geo_update:
+        print_banner()
+        print("  [GeoIP] 下载 MaxMind GeoLite2 离线数据库")
+        print()
+        if geo_update_interactive():
+            print()
+            print(f"  [OK] 数据库已保存到 {Path.home() / '.config' / 'ip-tidy'}")
+        sys.exit(0)
 
     print_banner()
     cfg = init_runtime()
