@@ -1601,6 +1601,8 @@ def main() -> None:
             print(c("  [已跳过] TLS 证书反查 (手动关闭)", C.G))
         else:
             print(c("  [已确认] TLS 证书反查 (SAN -> IP 扩充节点)", C.G))
+    else:
+        print(c("  [已确认] TLS 证书反查 (SAN -> IP 扩充节点)", C.G))
 
     total_steps = 2 if a.skip_masscan else 3
     if do_cert:

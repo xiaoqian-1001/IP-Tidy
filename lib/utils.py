@@ -83,7 +83,7 @@ def print_step(label: str) -> None:
     """打印步骤标题"""
     sep = c("=" * 60, C.LB)
     title = c(f"  {label}", C.LG)
-    print(f"\n{sep}")
+    print(sep)
     print(title)
     print(sep)
 
