@@ -1171,6 +1171,16 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
         pfx = f"[{bi + 1}/{len(batches)}] " if len(batches) > 1 else ""
         print(f"  {pfx}端口开放: +{new_in_batch} (累计 {len(all_open)})", flush=True)
 
+        # 本批无新增且后续还有批次，询问是否继续
+        if new_in_batch == 0 and bi + 1 < len(batches) and sys.stdin.isatty():
+            try:
+                ch = input(c("   > 本批无新端口, 继续下批? (y/n, 回车继续): ", C.Y)).strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                ch = ""
+            if ch == "n":
+                print(c("  [已跳过] 用户终止剩余 {len(batches) - bi - 1} 批次", C.G))
+                break
+
         if len(batches) > 1:
             try:
                 batch_xml.unlink()
