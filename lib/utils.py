@@ -61,22 +61,9 @@ def print_banner(cpu: int = 0, mem: str = "", rate: int = 0,
     print()
     print(c(sep, C.LB))
     print(c("  xiaoqian ASN NSD TOOL", C.LG))
-    print(c("  ASN -> CIDR -> Masscan -> CF -> CSV", C.W))
+    tag = f"  v{ver}" if ver else ""
+    print(c(f"  ASN -> CIDR -> Masscan -> CF -> CSV{tag}", C.W))
     print(c(sep, C.LB))
-
-    # 硬件 + 环境信息
-    if cpu:
-        hw = f"  [CPU] {cpu} 核  [MEM] {mem}  [Rate] {rate} pps"
-        print(c(hw, C.W))
-    if cf_c or api_c:
-        cfg_line = f"  [CF] {cf_c}c  [API] {api_c}c"
-        print(c(cfg_line, C.W))
-    if org:
-        loc = f"  [LOC] {city}" if city else ""
-        asn = f"  [ORG] {org}"
-        print(c(f"{loc}{asn}", C.W))
-    print(c(sep, C.LB))
-    print()
 
 
 def print_step(label: str) -> None:
