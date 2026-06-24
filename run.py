@@ -162,20 +162,20 @@ def step_smart_subnet(cfg: ScannerConfig, v4_cidrs: list[str]) -> list[str]:
     to_probe: list[str] = []     # 子网列表
     probe_map: dict[str, list[str]] = {}  # 子网 -> 原 CIDR 映射 (用于日志)
 
-    for c in v4_cidrs:
+    for cidr in v4_cidrs:
         try:
-            net = ipaddress.ip_network(c, strict=False)
+            net = ipaddress.ip_network(cidr, strict=False)
         except ValueError:
-            to_probe.append(c)
+            to_probe.append(cidr)
             continue
         if net.prefixlen < _SUBNET_THRESHOLD:
-            subs = _subnet_split(c)
+            subs = _subnet_split(cidr)
             to_probe.extend(subs)
             for s in subs:
-                probe_map[s] = c
+                probe_map[s] = cidr
         else:
-            to_probe.append(c)
-            probe_map[c] = c
+            to_probe.append(cidr)
+            probe_map[cidr] = cidr
 
     if len(to_probe) <= 1:
         print(f"  待探子网: {len(to_probe)} 段，跳过")
