@@ -1556,6 +1556,24 @@ def main() -> None:
     port_desc = f"端口 ({_port_count(cfg.scan_ports)} 个)"
     print(c(f"  [已确认] 端口模式: {port_desc}", C.G))
 
+    # ── 智能子网分级交互开关 ──
+    if not a.smart and v4_cidrs:
+        has_large = any(
+            ipaddress.ip_network(c, strict=False).prefixlen < _SUBNET_THRESHOLD
+            for c in v4_cidrs
+        )
+        if has_large:
+            print(c(f"  [INFO] 检测到大 CIDR (/{_SUBNET_THRESHOLD}+)，可启用智能子网分级探活", C.W))
+            try:
+                ch = input(c("  是否启用智能子网分级？(y/n, 回车跳过): ", C.Y)).strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                ch = ""
+            if ch == "y":
+                a.smart = True
+                print(c("  [已确认] 智能子网分级探活 (拆分 /24 抽样)", C.G))
+            else:
+                print(c("  [已跳过] 智能子网分级 (全量扫描)", C.G))
+
     total_steps = 2 if a.skip_masscan else 3
     total_steps += 1  # TLS 证书反查
     do_speed = a.speed
