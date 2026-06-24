@@ -689,16 +689,19 @@ def step_fetch_prefixes(cfg: ScannerConfig, asns: list[str], v4_cidrs: list[str]
         cache_key = f"AS{asn}"
         if cache_key in cache and now_ts - cache[cache_key].get("ts", 0) < _ASN_CACHE_TTL:
             entry = cache[cache_key]
-            all_v4.extend(entry.get("v4", []))
-            all_v6.extend(entry.get("v6", []))
             v4_cnt = entry.get("v4_count", 0)
             v6_cnt = entry.get("v6_count", 0)
-            age_h = (now_ts - entry["ts"]) / 3600
-            parts = []
-            if v4_cnt: parts.append(f"{v4_cnt} v4")
-            if v6_cnt: parts.append(f"{v6_cnt} v6")
-            print(f"  AS{asn} -> {', '.join(parts)} CIDR (缓存, {age_h:.1f}h前)")
-            continue
+            if v4_cnt == 0 and v6_cnt == 0:
+                cache.pop(cache_key, None)
+            else:
+                all_v4.extend(entry.get("v4", []))
+                all_v6.extend(entry.get("v6", []))
+                age_h = (now_ts - entry["ts"]) / 3600
+                parts = []
+                if v4_cnt: parts.append(f"{v4_cnt} v4")
+                if v6_cnt: parts.append(f"{v6_cnt} v6")
+                print(f"  AS{asn} -> {', '.join(parts)} CIDR (缓存, {age_h:.1f}h前)")
+                continue
 
         url = f"https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS{asn}"
         v4_new = 0
@@ -718,12 +721,15 @@ def step_fetch_prefixes(cfg: ScannerConfig, asns: list[str], v4_cidrs: list[str]
                     prefixes_v4.append(prefix)
                     all_v4.append(prefix)
                     v4_new += 1
-            cache[cache_key] = {"ts": now_ts, "v4_count": v4_new, "v6_count": v6_new,
-                                "v4": prefixes_v4, "v6": prefixes_v6, "updated": now_str}
-            parts = []
-            if v4_new: parts.append(f"{v4_new} v4")
-            if v6_new: parts.append(f"{v6_new} v6")
-            print(f"  AS{asn} -> {', '.join(parts)} CIDR")
+            if v4_new or v6_new:
+                cache[cache_key] = {"ts": now_ts, "v4_count": v4_new, "v6_count": v6_new,
+                                    "v4": prefixes_v4, "v6": prefixes_v6, "updated": now_str}
+                parts = []
+                if v4_new: parts.append(f"{v4_new} v4")
+                if v6_new: parts.append(f"{v6_new} v6")
+                print(f"  AS{asn} -> {', '.join(parts)} CIDR")
+            else:
+                print(c(f"  AS{asn} -> API 返回空，未缓存 (下次重新请求)", C.Y))
         except (urllib.error.URLError, json.JSONDecodeError, OSError,
                 KeyError) as e:
             if cache_key in cache:
