@@ -700,7 +700,7 @@ def step_fetch_prefixes(cfg: ScannerConfig, asns: list[str], v4_cidrs: list[str]
                 parts = []
                 if v4_cnt: parts.append(f"{v4_cnt} v4")
                 if v6_cnt: parts.append(f"{v6_cnt} v6")
-                print(f"  AS{asn} -> {', '.join(parts)} CIDR (缓存, {age_h:.1f}h前)")
+                print(f"  AS{asn} -> {', '.join(parts)} 前缀 (缓存, {age_h:.1f}h前)")
                 continue
 
         url = f"https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS{asn}"
@@ -727,7 +727,7 @@ def step_fetch_prefixes(cfg: ScannerConfig, asns: list[str], v4_cidrs: list[str]
                 parts = []
                 if v4_new: parts.append(f"{v4_new} v4")
                 if v6_new: parts.append(f"{v6_new} v6")
-                print(f"  AS{asn} -> {', '.join(parts)} CIDR")
+                print(f"  AS{asn} -> {', '.join(parts)} 前缀")
             else:
                 print(c(f"  AS{asn} -> API 返回空，未缓存 (下次重新请求)", C.Y))
         except (urllib.error.URLError, json.JSONDecodeError, OSError,
@@ -755,12 +755,12 @@ def step_fetch_prefixes(cfg: ScannerConfig, asns: list[str], v4_cidrs: list[str]
 
     v4_ip_count = _cidr_count(final_v4)
     v6_ip_count = _cidr_count(final_v6)
-    msg = f"  共 {len(all_cidrs)} 个 CIDR"
+    parts = []
     if final_v4:
-        msg += f" (v4: {len(final_v4)} 段 ~{v4_ip_count:,} IP)"
+        parts.append(f"v4 {len(final_v4)} 段 ~{v4_ip_count:,} IP")
     if final_v6:
-        msg += f" (v6: {len(final_v6)} 段)"
-    print(msg)
+        parts.append(f"v6 {len(final_v6)} 段")
+    print(f"  -> 合并: {', '.join(parts)}")
 
     if not all_cidrs:
         print(c("  [FAIL] 无可用 CIDR，请检查输入是否正确", C.Y))
