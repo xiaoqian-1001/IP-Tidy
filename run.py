@@ -243,7 +243,7 @@ def step_smart_subnet(cfg: ScannerConfig, v4_cidrs: list[str]) -> list[str]:
 
 
 def step_cert_enum(cfg: ScannerConfig) -> int:
-    """TLS 证书反查: 从 CF 节点提取 SAN，解析 IP 后合并入结果"""
+    """证书反查: crt.sh CT 日志查域名 + DNS 解析新 IP + API 交叉验证"""
     step_start = time.time()
     verified_file = BASE / "verified.txt"
 
@@ -251,95 +251,106 @@ def step_cert_enum(cfg: ScannerConfig) -> int:
         print("  无节点，跳过证书反查")
         return 0
 
-    entries: list[list[str]] = []
-    header = ""
+    existing_ips: set[str] = set()
     with open(verified_file) as f:
         for line in f:
             line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if line.startswith("IP"):
-                header = line
+            if not line or line.startswith("#") or line.startswith("IP"):
                 continue
             parts = line.split(",")
-            if len(parts) >= 9:
-                entries.append(parts)
+            if parts:
+                existing_ips.add(parts[0])
 
-    if not entries:
+    if not existing_ips:
         print("  无有效节点，跳过")
         return 0
 
-    print(f"  证书反查: {len(entries)} 个节点 (TLS SAN 提取)")
+    print(f"  证书反查: {len(existing_ips)} 个节点 (crt.sh CT 日志)")
 
-    new_ips: dict[str, str] = {}  # ip -> source_ip
-
-    def _extract_san(ip: str, port: str) -> list[str]:
+    def _fetch_domains(ip: str) -> list[str]:
         try:
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            with socket.create_connection((ip, int(port)), timeout=8) as sock:
-                with ctx.wrap_socket(sock, server_hostname="cloudflare.com") as ssock:
-                    cert = ssock.getpeercert()
-                    sans = []
-                    for _, val in cert.get("subjectAltName", []):
-                        sans.append(val)
-                    return sans
+            url = f"https://crt.sh/?q={ip}&output=json"
+            req = urllib.request.Request(url, headers={"User-Agent": "ip-tidy/2.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+            domains: set[str] = set()
+            for entry in data if isinstance(data, list) else []:
+                for field in ("name_value", "common_name"):
+                    val = entry.get(field, "")
+                    if val:
+                        for d in val.split("\n"):
+                            d = d.strip().lower()
+                            if d and not d.startswith("*"):
+                                domains.add(d)
+            return list(domains)
         except Exception:
             return []
 
-    total = len(entries)
-    found = 0
-    with ThreadPoolExecutor(max_workers=min(total, cfg.api_concurrency)) as ex:
-        fmap = {}
-        for idx, parts in enumerate(entries):
-            fmap[ex.submit(_extract_san, parts[0], parts[1])] = idx
-
+    all_domains: set[str] = set()
+    total = len(existing_ips)
+    with ThreadPoolExecutor(max_workers=min(total, 5)) as ex:
+        fmap = {ex.submit(_fetch_domains, ip): ip for ip in existing_ips}
         done = 0
         for future in as_completed(fmap):
-            idx = fmap[future]
             done += 1
-            if done % 10 == 0:
-                write_progress(done / total * 100, f" | 提取 {done}/{total}")
+            if done % 5 == 0:
+                write_progress(done / total * 100, f" | 查域名 {done}/{total}")
             try:
-                sans = future.result()
+                all_domains.update(future.result())
             except Exception:
-                continue
-            for san in sans:
-                if san.startswith("*"):
-                    continue
-                try:
-                    resolved = socket.getaddrinfo(san, None, socket.AF_INET,
-                                                  socket.SOCK_STREAM)
-                    for _, _, _, _, sockaddr in resolved:
-                        ip_addr = sockaddr[0]
-                        if ip_addr not in new_ips and ip_addr != entries[idx][0]:
-                            new_ips[ip_addr] = entries[idx][0]
-                            found += 1
-                except (OSError, UnicodeError):
-                    continue
+                pass
 
-    write_progress_done(f" | 新发现 IP: {found}")
+    write_progress_done(f" | 域名 {len(all_domains)} 个")
 
-    if not new_ips:
-        print(c(f"  未发现新 IP (本步耗时: {int(time.time() - step_start)}s)", C.W))
+    if not all_domains:
+        print(c(f"  crt.sh 未找到关联域名, 本步耗时: {int(time.time() - step_start)}s", C.W))
         return 0
 
-    print(f"  新发现 IP: {found} (来自 TLS SAN)")
-    print(f"  交叉验证中...")
+    print(f"  域名: {len(all_domains)} 个, 解析 IP...")
+
+    new_ips: dict[str, str] = {}
+    found = 0
+
+    def _resolve(domain: str) -> list[str]:
+        try:
+            result = socket.getaddrinfo(domain, None, socket.AF_INET, socket.SOCK_STREAM)
+            return [r[4][0] for r in result]
+        except Exception:
+            return []
+
+    with ThreadPoolExecutor(max_workers=min(len(all_domains), cfg.api_concurrency)) as ex:
+        fmap = {ex.submit(_resolve, d): d for d in all_domains}
+        done = 0
+        total_domains = len(all_domains)
+        for future in as_completed(fmap):
+            done += 1
+            if done % 10 == 0:
+                write_progress(done / total_domains * 100, f" | 解析 {done}/{total_domains}")
+            try:
+                for ip in future.result():
+                    if ip not in existing_ips and ip not in new_ips:
+                        new_ips[ip] = ""
+                        found += 1
+            except Exception:
+                pass
+
+    write_progress_done(f" | 新 IP: {found}")
+
+    if not new_ips:
+        print(c(f"  未发现新 IP, 本步耗时: {int(time.time() - step_start)}s", C.W))
+        return 0
+
+    print(f"  新 IP: {found} (crt.sh -> DNS), 交叉验证中...")
 
     cf_verified: list[list[str]] = []
     with ThreadPoolExecutor(max_workers=min(len(new_ips), cfg.api_concurrency)) as ex:
-        vmap = {}
-        for ip, src in new_ips.items():
-            vmap[ex.submit(_verify_ip, ip)] = (ip, src)
-
+        vmap = {ex.submit(_verify_ip, ip): ip for ip in new_ips}
         for future in as_completed(vmap):
-            ip, src = vmap[future]
+            ip = vmap[future]
             try:
                 result = future.result()
                 if result:
-                    cf_verified.append([ip, src, result.get("org", ""),
+                    cf_verified.append([ip, result.get("org", ""),
                                         result.get("colo", ""),
                                         result.get("country", ""),
                                         result.get("city", "")])
@@ -350,17 +361,14 @@ def step_cert_enum(cfg: ScannerConfig) -> int:
     if cf_verified:
         with open(verified_file, "r") as f:
             existing = f.read()
-
         with open(verified_file, "w") as f:
             f.write(existing.rstrip() + "\n")
             for row in cf_verified:
-                ip, src, org, colo, country, city = row
-                # 复用源节点其他列 (端口 443, TLS TRUE)
-                line = f"{ip},443,TRUE,{colo},{country},{city},,,{org}"
-                f.write(line + "\n")
+                ip, org, colo, country, city = row
+                f.write(f"{ip},443,TRUE,{colo},{country},{city},,,{org}\n")
                 new_count += 1
 
-    print(c(f"  合并: +{new_count} 个新节点 (来源: TLS SAN 反查)", C.G))
+    print(c(f"  合并: +{new_count} 个新节点 (来源: crt.sh)", C.G))
     print(c(f"  本步耗时: {int(time.time() - step_start)}s", C.W))
     return new_count
 
