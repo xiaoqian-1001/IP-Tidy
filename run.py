@@ -1751,7 +1751,7 @@ def main() -> None:
                 proto = "IPv6" if ":" in ip_part else "IPv4"
                 f.write(p + f",{proto}\n")
 
-        print(c(f"\n  结果: {len(parsed)} 条 -> {csv_path.name}", C.G))
+        print(c(f"  结果: {len(parsed)} 条 -> {csv_path.name}", C.G))
 
     elif cfg.ip_mode == "v6":
         # v6-only mode: export CIDR list if no scan results
@@ -1805,7 +1805,6 @@ def _serve_download(file_path: Path) -> None:
 
     server: Optional[subprocess.Popen] = None
     try:
-        print()
         print_sep("=", C.LB)
         print(c("  下载服务已启动 (按回车关闭)", C.LG))
         print(c(f"  http://{lan_ip}:{port}/{file_path.name}", C.LB))

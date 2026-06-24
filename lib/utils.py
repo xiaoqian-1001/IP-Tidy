@@ -124,14 +124,12 @@ def print_result_header(total_asn: int, total_cidr: int,
         if v4_cidr: parts.append(f"v4={v4_cidr}")
         if v6_cidr: parts.append(f"v6={v6_cidr}")
         cidr_info += f" ({', '.join(parts)})"
-    print()
-    print(sep)
+    print_sep("=", C.G)
     print(c("  [TASK COMPLETE]", C.LG))
     print(c(f"  ASN: {total_asn}  |  CIDR: {cidr_info}  |  "
             f"Open Ports: {total_open}  |  CF Nodes: {cf_nodes}  |  "
             f"Passed: {passed}", C.W))
-    print(sep)
-    print()
+    print_sep("=", C.G)
 
 
 def print_total_time(elapsed: float) -> None:
