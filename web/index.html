@@ -323,7 +323,7 @@ function startTask(){
         p.ip_mode=document.getElementById('ipMode').value;
         var input=document.getElementById('asnCidrInput').value.trim();
         var asns=[], cidrs=[];
-        input.replace('，',',').split(',').forEach(function(s){s=s.trim();if(!s)return;if(s.indexOf('/')>=0)cidrs.push(s);else{var a=s.replace(/^AS/i,'');if(/^\d+$/.test(a))asns.push(a)}});
+        input=input.replace('，',',').split(',').forEach(function(s){s=s.trim();if(!s)return;if(s.indexOf('/')>=0)cidrs.push(s);else{var a=s.replace(/^AS/i,'');if(/^\d+$/.test(a))asns.push(a)}});
         p.asns=asns.join(','); p.cidrs=cidrs.join(',');
     }else{
         p.ips=document.getElementById('customIps').value;

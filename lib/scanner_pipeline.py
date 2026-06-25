@@ -24,7 +24,7 @@ from .scanner_utils import (
     port_count, split_port_batches,
     adjust_concurrency, detect_hardware,
     masscan_adapter_ip, masscan_bin, probe_masscan_rate_fast,
-    read_masscan_stderr, masscan_bin as _masscan_bin,
+    read_masscan_stderr,
     crtsh_query, dns_resolve, verify_ip,
     tcp_latency, cf_download, test_one,
     read_default_ports, expand_cidrs,

@@ -237,26 +237,6 @@ def detect_isp(ip: str) -> tuple[str, str, str, str]:
     except Exception:
         pass
     return ip, "", "", ""
-    try:
-        token = _load_ipinfo_token()
-        url = f"https://ipinfo.io/{ip}/json"
-        if token:
-            url += f"?token={token}"
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-        country = data.get("country", "")
-        org = data.get("org", "")
-        city = data.get("city", "")
-        if country == "CN":
-            isp = org.split(" ", 1)[-1] if org else "未知"
-            print(f"  地区: {city}, {country}  运营商: {isp}")
-        else:
-            print(f"  地区: {city}, {country}  机构: {org}")
-        return ip, country, org, city
-    except Exception as e:
-        print(f"  (获取详情失败: {e})")
-    return ip, "", "", ""
 
 
 # ── 端口解析 ──
