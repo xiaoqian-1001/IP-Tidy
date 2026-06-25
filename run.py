@@ -238,7 +238,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
 
     text_file = BASE / "masscan_result.txt"
     text_file.write_text("\n".join(all_open) + "\n")
-    print(f"  开放端口: {len(all_open)} (syn-ack 确认)")
+    print(f"  开放端口: {len(all_open)}（Syn-Ack确认）")
     step_s = int(time.time() - step_start)
     m, s = divmod(step_s, 60)
     print(c(f"  本步耗时: {m}分{s}秒" if m else f"  本步耗时: {step_s}秒", C.W))
@@ -312,7 +312,8 @@ def _pipeline(cfg: ScannerConfig) -> tuple[int, int]:
                 eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
                 tag = " | 精筛并行" if verify_running.is_set() else ""
                 extra = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒" if pct > 0.5 else ""
-                write_progress(pct, tag + extra)
+                stage_label = " | API精筛" if verify_running.is_set() else " | CF检测"
+                write_progress(pct, extra + stage_label)
                 last_pct = pct
     proc.wait()
 
@@ -343,7 +344,7 @@ def _pipeline(cfg: ScannerConfig) -> tuple[int, int]:
 
     rate_pct = passed / hits * 100 if hits else 0
     rate_color = C.G if rate_pct >= 50 else C.Y
-    msg = f"  CF IP: {hits}  |  精筛通过: {rate_pct:.0f}% ({passed}/{hits})"
+    msg = f"  CF可用IP数量: {hits}  |  精筛通过率: {rate_pct:.0f}% ({passed}/{hits})"
     print(c(msg, rate_color))
     print(c(f"  本步耗时: {int(time.time() - step_start)}秒", C.W))
     return hits, passed
@@ -750,7 +751,7 @@ def main() -> None:
     step_num += 1
     steps.append((f"Step {step_num}  CF 检测 + API 精筛", lambda: _pipeline(cfg)))
     step_num += 1
-    steps.append((f"Step {step_num}  深度挖掘 (扩展 /16)", lambda: step_deep_mine(cfg)))
+    steps.append((f"Step {step_num}  深度挖掘", lambda: step_deep_mine(cfg)))
     if do_deep:
         step_num += 1
         steps.append((f"Step {step_num}  深度宽端口扫描", lambda: step_deep_scan(cfg)))
@@ -975,7 +976,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
     if not do_deep_mine:
         print(c("  [已跳过] 深度扫描", C.G))
 
-    print(f"  深度挖掘: {len(existing_ips)} IP -> {len(cidrs)} 个 /{prefix} CIDR ({total_possible:,} IP)")
+    print(f"  深度挖掘: {len(existing_ips)}条IP -> {len(cidrs)}段 /{prefix} CIDR（{total_possible:,}条IP）")
 
     ensure_cf_scanner()
 
@@ -992,7 +993,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             elapsed = time.time() - step_start
             eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
             eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒" if pct > 1 else ""
-            write_progress(pct, f" | masscan {data.get('stage','')}{eta_s}")
+            write_progress(pct, f" | {data.get('stage','')}{eta_s}")
         elif typ == "scan_progress":
             cur = data.get("current", 0)
             total = data.get("total", 1)
@@ -1000,7 +1001,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             elapsed = time.time() - step_start
             eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
             eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒" if pct > 1 else ""
-            write_progress(pct, f" | cf-scanner {data.get('stage','')}{eta_s}")
+            write_progress(pct, f" | {data.get('stage','')}{eta_s}")
         elif typ == "log":
             sys.stderr.write("\n"); sys.stderr.flush()
             print(f"  {data}")
@@ -1028,7 +1029,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
         cidr_file.unlink(missing_ok=True)
         return 0
 
-    print(f"  masscan 开放端口: {len(masscan_hits)} (syn-ack 确认)")
+    print(f"  masscan 开放端口: {len(masscan_hits)}（Syn-Ack确认）")
 
     cf_in = BASE / ".deep_mine_cf_in.txt"
     cf_out = BASE / ".deep_mine_cf_out.txt"
@@ -1076,10 +1077,11 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
         try: f.unlink()
         except OSError: pass
 
+    rate = len(new_results) / hit_count * 100 if hit_count else 0
     elapsed = int(time.time() - step_start)
     m, s = divmod(elapsed, 60)
-    write_progress_done(f" | 深度挖掘: +{len(real_new)} 新 IP | {m}分{s}秒" if m else f" | 深度挖掘: +{len(real_new)} 新 IP | {elapsed}秒")
-    print(c(f"  深度挖掘: +{len(real_new)} 个新 IP", C.G))
+    write_progress_done(f" | {m}分{s}秒" if m else f" | {elapsed}秒")
+    print(c(f"  CF可用IP数量: {hit_count}  |  精筛通过率: {rate:.0f}% ({len(new_results)}/{hit_count})  |  深度挖掘: +{len(real_new)} 新 IP", C.G))
     print(c(f"  本步耗时: {m}分{s}秒" if m else f"  本步耗时: {elapsed}秒", C.W))
     return len(real_new)
 

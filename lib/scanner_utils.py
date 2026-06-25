@@ -435,8 +435,6 @@ def read_masscan_stderr(proc, prefix: str = "",
                     seen_100 = True
                 last_progress = time.time()
                 elapsed = last_progress - t0
-                eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
-                extra = f" | ETA {int(eta // 60)}m {int(eta % 60)}s" if pct > 0.5 else ""
                 if progress_callback:
                     progress_callback(pct, prefix + extra)
             idx += 1
