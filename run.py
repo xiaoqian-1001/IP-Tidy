@@ -171,7 +171,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
         def _masscan_progress(pct, _extra):
             elapsed = time.time() - step_start
             eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
-            eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒".rstrip(".") if pct > 1 else ""
+            eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒" if pct > 1 else ""
             write_progress(pct, prefix + eta_s)
 
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
@@ -930,7 +930,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             pct = min(cur / total * 100, 100)
             elapsed = time.time() - step_start
             eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
-            eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒".rstrip(".") if pct > 1 else ""
+            eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒" if pct > 1 else ""
             write_progress(pct, eta_s)
         elif typ == "scan_progress":
             cur = data.get("current", 0)
@@ -938,7 +938,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             pct = min(cur / total * 100, 100)
             elapsed = time.time() - step_start
             eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
-            eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒".rstrip(".") if pct > 1 else ""
+            eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒" if pct > 1 else ""
             write_progress(pct, f" | CF检测{eta_s}")
         elif typ == "log":
             msg = str(data)

@@ -110,12 +110,11 @@ def write_progress_done(extra: str = "") -> None:
     """完成进度条"""
     bar = c(_FILL * BAR_WIDTH, C.G)
     pct_s = "100.0%".rjust(6)
-    line = f"\r  [{bar}] {pct_s}{extra}\n"
-    # Pad to BAR_WIDTH + len(extra) + 12 to erase leftover from previous line
-    pad_needed = BAR_WIDTH + len(extra) + 12 - len(line.rstrip('\n'))
-    if pad_needed > 0:
-        line = line.rstrip('\n') + " " * pad_needed + "\n"
-    sys.stderr.write(line)
+    sys.stderr.write(f"\r  [{bar}] {pct_s}{extra}")
+    # Pad remaining width with spaces to clear leftover chars from previous line
+    current_len = 4 + BAR_WIDTH + 6 + len(extra)  # "\r  [" + bar + " " + pct_s + extra
+    pad = max(0, 80 - current_len)
+    sys.stderr.write(" " * pad + "\n")
     sys.stderr.flush()
 
 
