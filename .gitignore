@@ -6,3 +6,5 @@ __pycache__/
 !ports.txt
 !requirements.txt
 scanner.state
+.asn_cache.json
+.web_tmp/
