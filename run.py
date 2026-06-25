@@ -931,8 +931,6 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             elapsed = time.time() - step_start
             eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
             eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒" if pct > 1 else ""
-            with open("/tmp/debug_eta.txt", "a") as f:
-                f.write(f"pct={pct} eta={eta} eta_s={repr(eta_s)}\n")
             write_progress(pct, eta_s)
         elif typ == "scan_progress":
             cur = data.get("current", 0)
