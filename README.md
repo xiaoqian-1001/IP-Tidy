@@ -101,10 +101,6 @@ bash start_web.sh
 | v6 导出 | IPv6 结果导出为 CIDR 清单 |
 | 服务器信息 | 状态栏显示 CPU/内存/cf-scanner/GeoIP 状态 |
 
-### 截图
-
-![WEB 界面](img/web.png)
-
 ---
 
 ## 离线 GeoIP (`-g`)
