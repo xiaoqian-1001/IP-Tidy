@@ -854,17 +854,16 @@ def main() -> None:
                 port = parts[1]
                 colo = parts[3]
                 country = parts[4]
-                region = parts[5]
+                city = ""
                 latency = parts[6]
                 asn = parts[8]
-                proto = "IPv6" if ":" in ip else "IPv4"
-                city = region
+                proto = "IPv4"
                 isp = ""
-                loc = f"{city}, {country}" if city else country
+                loc = ""
                 try:
                     gi = geo_lookup(ip)
                     if gi:
-                        if gi.get("country") and not country:
+                        if gi.get("country"):
                             country = gi["country"]
                         if gi.get("city"):
                             city = gi["city"]
@@ -873,6 +872,8 @@ def main() -> None:
                         loc = f"{city}, {country}" if city else country
                 except Exception:
                     pass
+                if not latency:
+                    latency = "0"
                 f.write(f"{ip},{port},TRUE,{colo},{loc},{country},{city},{latency},{proto},{asn},{isp}\n")
 
         print(c(f"  结果: {len(parsed)} 条 -> {csv_path.name}", C.G))
@@ -1019,7 +1020,7 @@ def step_deep_mine(cfg: ScannerConfig, existing_count: int) -> int:
         with open(verified_file, "a") as f:
             for r in real_new:
                 f.write(f"{r['ip']},{r.get('port','443')},TRUE,{r.get('colo','')},"
-                        f"{r.get('country','')},{r.get('region','')},,,AS{r.get('asn','')}\n")
+                        f"{r.get('country','')},{r.get('city','')},,,AS{r.get('asn','')}\n")
 
     for f in (cidr_file, cf_in, cf_out):
         try: f.unlink()
