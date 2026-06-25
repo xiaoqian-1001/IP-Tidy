@@ -245,7 +245,7 @@ def verify_batch(entries: list[str], concurrency: int = 32,
         "--input", str(inp), "--output", str(out),
         "--api", API_URL,
         "--chunk", "500", "--concurrent", str(concurrency),
-    ], capture_output=True, text=True, timeout=600)
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, text=True, timeout=600)
 
     results = []
     if out.exists():
