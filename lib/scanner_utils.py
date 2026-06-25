@@ -414,20 +414,6 @@ def test_one(parts: list[str]) -> tuple[str, int, float]:
     return ",".join(result), lat, spd
 
 
-def verify_ip(ip: str) -> Optional[dict]:
-    try:
-        url = f"{API_URL}?ip={ip}"
-        req = urllib.request.Request(url, headers={"User-Agent": "ip-tidy/2.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read())
-            if data.get("cf", False) or data.get("colo"):
-                return {"org": data.get("org", ""), "colo": data.get("colo", ""),
-                        "country": data.get("country", ""), "city": data.get("city", "")}
-    except Exception:
-        pass
-    return None
-
-
 def read_masscan_stderr(proc, prefix: str = "",
                         progress_callback: Optional[Callable] = None) -> list[str]:
     lines: list[str] = []
@@ -470,34 +456,6 @@ def read_masscan_stderr(proc, prefix: str = "",
             proc.wait()
             break
     return lines
-
-
-def crtsh_query(ip: str) -> list[str]:
-    try:
-        url = f"https://crt.sh/?q={ip}&output=json"
-        req = urllib.request.Request(url, headers={"User-Agent": "ip-tidy/2.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-        domains: set[str] = set()
-        for entry in (data if isinstance(data, list) else []):
-            for field in ("name_value", "common_name"):
-                val = entry.get(field, "")
-                if val:
-                    for d in val.split("\n"):
-                        d = d.strip().lower()
-                        if d and not d.startswith("*"):
-                            domains.add(d)
-        return list(domains)
-    except Exception:
-        return []
-
-
-def dns_resolve(domain: str) -> list[str]:
-    try:
-        result = socket.getaddrinfo(domain, None, socket.AF_INET, socket.SOCK_STREAM)
-        return [r[4][0] for r in result]
-    except Exception:
-        return []
 
 
 def read_default_ports(ports_file: Optional[Path] = None) -> str:
@@ -606,7 +564,7 @@ def parse_targets(raw_args: list[str]) -> tuple[list[str], list[str], list[str]]
                 continue
             if arg in ("-p", "-r"):
                 skip_next = True
-            elif arg in ("-s", "-w", "-R", "-d", "--v4-only", "--v6-only", "--smart", "--no-cert"):
+            elif arg in ("-s", "-w", "-R", "-d", "--v4-only", "--v6-only", "--smart"):
                 pass
             else:
                 filtered.append(arg)

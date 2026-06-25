@@ -24,7 +24,6 @@ from .scanner_utils import (
     port_count, split_port_batches,
     masscan_adapter_ip, masscan_bin,
     read_masscan_stderr,
-    crtsh_query, dns_resolve, verify_ip,
     SUBNET_PROBE, SUBNET_THRESHOLD, SUBNET_PORT, SUBNET_TIMEOUT,
 )
 
@@ -333,68 +332,6 @@ def smart_subnet_probe(v4_cidrs: list[str],
     if dead_count > 0 and progress_callback:
         progress_callback("log", f"探活完成: {len(alive_cidrs)}/{total_subs} 子段存活 (过滤 {dead_count} 死段)")
     return alive_cidrs
-
-
-def cert_enum(results: list[dict],
-              progress_callback: Optional[Callable] = None,
-              sid: str = "",
-              threads: int = 100) -> int:
-    if not results:
-        return 0
-    if progress_callback:
-        progress_callback("log", f"crt.sh 证书反查 {len(results)} 个节点...")
-
-    existing = {r["ip"] for r in results}
-    new_ips: dict[str, str] = {}
-    done = 0
-
-    with ThreadPoolExecutor(max_workers=min(10, threads)) as ex:
-        fmap = {ex.submit(crtsh_query, r["ip"]): r["ip"] for r in results}
-        all_domains: set[str] = set()
-        for future in as_completed(fmap):
-            done += 1
-            try:
-                all_domains.update(future.result())
-            except Exception:
-                pass
-
-    if not all_domains:
-        if progress_callback:
-            progress_callback("log", "crt.sh 未发现关联域名")
-        return 0
-
-    if progress_callback:
-        progress_callback("log", f"发现 {len(all_domains)} 个关联域名, DNS 解析中...")
-
-    with ThreadPoolExecutor(max_workers=min(20, threads)) as ex:
-        fmap = {ex.submit(dns_resolve, d): d for d in all_domains}
-        for future in as_completed(fmap):
-            try:
-                for ip in future.result():
-                    if ip not in existing:
-                        new_ips[ip] = ""
-            except Exception:
-                pass
-
-    if not new_ips:
-        if progress_callback:
-            progress_callback("log", "未发现新 IP")
-        return 0
-
-    if progress_callback:
-        progress_callback("log", f"DNS 解析发现 {len(new_ips)} 个新 IP, API 验证中...")
-
-    new_entries = [f"{ip}:443" for ip in new_ips]
-    new_results = verify_batch(new_entries, concurrency=min(32, threads),
-                               progress_callback=progress_callback, sid=sid)
-
-    for r in new_results:
-        r["latency"] = 0
-        r["latency_str"] = "N/A"
-    results.extend(new_results)
-    if progress_callback:
-        progress_callback("log", f"证书反查新增 {len(new_results)} 个节点")
-    return len(new_results)
 
 
 def run_speed_test(ip: str, port: int) -> str:

@@ -2,7 +2,7 @@
 
 > **xiaoqian ASN NSD TOOL** -- ASN / CIDR -> Masscan -> TLS 检测 -> CF 节点 CSV
 
-支持 CLI 模式。一键输入 ASN 或 CIDR（支持 IPv4/IPv6），自动完成 IP 段解析、高速端口扫描、Cloudflare 反代节点检测、TLS 证书反查扩充节点池，输出结构化 CSV。
+支持 CLI 模式。一键输入 ASN 或 CIDR（支持 IPv4/IPv6），自动完成 IP 段解析、高速端口扫描、Cloudflare 反代节点检测，输出结构化 CSV。
 
 ![image](img/3094.png)
 
@@ -14,7 +14,6 @@
 |------|------|
 | 双栈支持 | IPv4 / IPv6 CIDR 全链路解析、合并、去重、分离导出 |
 | 智能子网分级 | 大 CIDR 自动拆 /24 抽样探活，仅扫活跃子段 (`--smart`) |
-| 证书反查 | TLS SAN 提取 -> DNS 解析 -> API 交叉验证，自动扩充节点 |
 | 离线 GeoIP | 内置 MaxMind GeoLite2 数据库，无需网络查 ISP/地区/ASN |
 | 多输入源 | 支持 ASN 编号、CIDR 网段、混合输入 |
 | 深度扫描 | 二阶段宽端口扫描，发现隐藏高位端口 |
@@ -114,22 +113,6 @@ ip-tidy 10.0.0.0/16 --smart
 
 ---
 
-## TLS 证书反查
-
-扫描完成后自动从 [crt.sh](https://crt.sh) 证书透明度日志查询每个 CF 节点关联的域名，DNS 解析新 IP 后通过 API 交叉验证，合法 CF 节点自动合并入结果文件。无需 API Key。
-
-| 步骤 | 说明 |
-|------|------|
-| CT 查询 | 通过 IP 查询 crt.sh 证书日志 |
-| 域名提取 | 解析所有关联域名，过滤通配符 |
-| DNS 解析 | 将域名解析为 IPv4 地址 |
-| API 交叉验证 | 调用验证 API 确认 IP 属 CF |
-| 结果合并 | 新节点写入 `verified.txt` |
-
-无需额外参数，CF 检测步骤后自动执行。
-
----
-
 ## 工作流程
 
 ```mermaid
@@ -138,10 +121,9 @@ graph LR
     B --> C["子网分级探活 (--smart)<br/>大段拆 /24 抽样"]
     C --> D["masscan<br/>v4 CIDR SYN 扫描"]
     D --> E["cf-scanner + API<br/>TLS 检测 + 精筛并行"]
-    E --> F["证书反查<br/>crt.sh -> 域名 -> DNS -> API 验证"]
-    F --> G["深度扫描 (可选)<br/>命中 IP 追加宽端口"]
-    G --> H["测速 (可选)<br/>延迟 + 带宽"]
-    H --> I["CSV 输出 + HTTP 下载"]
+    E --> F["深度扫描 (可选)<br/>命中 IP 追加宽端口"]
+    F --> G["测速 (可选)<br/>延迟 + 带宽"]
+    G --> H["CSV 输出 + HTTP 下载"]
 ```
 
 | # | 步骤 | 说明 |
@@ -150,10 +132,9 @@ graph LR
 | 2 | 子网分级 (可选) | 大 CIDR 拆 /24 抽样探活，仅保留活跃子网 (`--smart`) |
 | 3 | masscan | 自适应速率 SYN 扫描，XML 解析，仅保留 syn-ack |
 | 4 | CF 检测 + 精筛 | Go cf-scanner TLS 握手检测 + API 二次验证 |
-| 5 | 证书反查 | crt.sh CT 日志查询域名 -> DNS 解析 -> API 交叉验证 -> 合并入结果 |
-| 6 | 深度扫描 (可选) | 对命中 IP 追加宽端口，两阶段产出最大化 |
-| 7 | 多点测速 (可选) | TCP 延迟 + 多 URL 下载测速 |
-| 8 | 输出 | 生成 CSV，启动临时 HTTP 下载服务 |
+| 5 | 深度扫描 (可选) | 对命中 IP 追加宽端口，两阶段产出最大化 |
+| 6 | 多点测速 (可选) | TCP 延迟 + 多 URL 下载测速 |
+| 7 | 输出 | 生成 CSV，启动临时 HTTP 下载服务 |
 
 ---
 
@@ -227,7 +208,7 @@ IP-Tidy/
 
 ```
 lib/scanner_utils.py     纯函数层: CIDR 拆分、端口解析、子网探活、延迟测量、证书查询等
-lib/scanner_pipeline.py  扫描管道层: ASN→CIDR、masscan、cf-scanner、verify、智能探活、证书反查
+lib/scanner_pipeline.py  扫描管道层: ASN→CIDR、masscan、cf-scanner、verify、智能探活
                          通过 progress_callback 报告进度
 run.py                   CLI 入口: argparse + 终端交互 + 步骤编排 + 终端渲染
 ```
@@ -273,20 +254,15 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：NAT 容器、OpenVZ/LXC (
 - 智能子网探活: 大 CIDR 拆 /24 抽样 TCP 探测
 - GeoIP 状态栏显示，服务器硬件信息
 - RIPEStat ASN CIDR 解析 (7天缓存)
-- crt.sh 证书反查 + curl 下载测速
 - CSV 导出完整对齐 run.py 格式 (含协议列)
 - v6-only 模式导出 CIDR 清单
 
 ### v2.0.3
-- 证书反查改用 crt.sh CT 日志查询域名，替代 TLS 握手 SAN 提取，命中率大幅提升
-- 修复证书反查通配符 SAN DNS 解析失败问题
 - 修复 ASN 缓存空结果导致持续解析 0 CIDR
 - 修复 print_step / print_banner 多余空行，精简输出
-- TLS 证书反查交互默认改为跳过，需输入 y 开启
 - 非交互模式输出 TLS 状态，不再静默运行
 - ASN 和 TASK COMPLETE 输出格式调整
 - 智能子网分级 (`--smart`): 大 CIDR 拆 /24 抽样 TCP 探活，仅扫活跃子段
-- TLS 证书反查: 自动提取 SAN -> DNS 解析 -> API 交叉验证，扩充节点池
 - ScannerConfig 新增 smart_mode / ip_mode 字段
 
 ### v2.0.1

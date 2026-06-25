@@ -41,13 +41,13 @@ from lib.scanner_utils import (
     subnet_split, quick_probe, sample_ips,
     random_ports, port_count, split_port_batches,
     get_system_load, adjust_concurrency, detect_hardware,
-    find_iface, probe_masscan_rate, tcp_latency, cf_download, test_one, verify_ip,
-    read_masscan_stderr, crtsh_query, dns_resolve,
+    find_iface, probe_masscan_rate, tcp_latency, cf_download, test_one,
+    read_masscan_stderr,
     read_default_ports, parse_targets,
 )
 from lib.scanner_pipeline import (
     resolve_asn_cidrs, run_masscan, run_cf_scanner, verify_batch,
-    smart_subnet_probe, cert_enum, ensure_cf_scanner,
+    smart_subnet_probe, ensure_cf_scanner,
     enrich_geoip, geo_available as pipeline_geo_available,
 )
 
@@ -360,108 +360,6 @@ def _pipeline(cfg: ScannerConfig) -> tuple[int, int]:
     return hits, passed
 
 
-def step_cert_enum(cfg: ScannerConfig) -> int:
-    step_start = time.time()
-    verified_file = BASE / "verified.txt"
-    if not verified_file.exists() or verified_file.stat().st_size == 0:
-        print("  无节点，跳过证书反查")
-        return 0
-
-    existing_ips: set[str] = set()
-    with open(verified_file) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith("IP"):
-                continue
-            parts = line.split(",")
-            if parts:
-                existing_ips.add(parts[0])
-
-    if not existing_ips:
-        print("  无有效节点，跳过")
-        return 0
-
-    print(f"  证书反查: {len(existing_ips)} 个节点 (crt.sh CT 日志)")
-
-    all_domains: set[str] = set()
-    total = len(existing_ips)
-    with ThreadPoolExecutor(max_workers=min(total, 5)) as ex:
-        fmap = {ex.submit(crtsh_query, ip): ip for ip in existing_ips}
-        done = 0
-        for future in as_completed(fmap):
-            done += 1
-            if done % 5 == 0:
-                write_progress(done / total * 100, f" | 查域名 {done}/{total}")
-            try:
-                all_domains.update(future.result())
-            except Exception:
-                pass
-
-    write_progress_done(f" | 域名 {len(all_domains)} 个")
-
-    if not all_domains:
-        print(c(f"  crt.sh 未找到关联域名, 本步耗时: {int(time.time() - step_start)}s", C.W))
-        return 0
-
-    print(f"  域名: {len(all_domains)} 个, 解析 IP...")
-
-    new_ips: dict[str, str] = {}
-    found = 0
-    with ThreadPoolExecutor(max_workers=min(len(all_domains), cfg.api_concurrency)) as ex:
-        fmap = {ex.submit(dns_resolve, d): d for d in all_domains}
-        done = 0
-        total_domains = len(all_domains)
-        for future in as_completed(fmap):
-            done += 1
-            if done % 10 == 0:
-                write_progress(done / total_domains * 100, f" | 解析 {done}/{total_domains}")
-            try:
-                for ip in future.result():
-                    if ip not in existing_ips and ip not in new_ips:
-                        new_ips[ip] = ""
-                        found += 1
-            except Exception:
-                pass
-
-    write_progress_done(f" | 新 IP: {found}")
-
-    if not new_ips:
-        print(c(f"  未发现新 IP, 本步耗时: {int(time.time() - step_start)}s", C.W))
-        return 0
-
-    print(f"  新 IP: {found} (crt.sh -> DNS), 交叉验证中...")
-
-    cf_verified: list[list[str]] = []
-    with ThreadPoolExecutor(max_workers=min(len(new_ips), cfg.api_concurrency)) as ex:
-        vmap = {ex.submit(verify_ip, ip): ip for ip in new_ips}
-        for future in as_completed(vmap):
-            ip = vmap[future]
-            try:
-                result = future.result()
-                if result:
-                    cf_verified.append([ip, result.get("org", ""),
-                                        result.get("colo", ""),
-                                        result.get("country", ""),
-                                        result.get("city", "")])
-            except Exception:
-                pass
-
-    new_count = 0
-    if cf_verified:
-        with open(verified_file, "r") as f:
-            existing = f.read()
-        with open(verified_file, "w") as f:
-            f.write(existing.rstrip() + "\n")
-            for row in cf_verified:
-                ip, org, colo, country, city = row
-                f.write(f"{ip},443,TRUE,{colo},{country},{city},,,{org}\n")
-                new_count += 1
-
-    print(c(f"  合并: +{new_count} 个新节点 (来源: crt.sh)", C.G))
-    print(c(f"  本步耗时: {int(time.time() - step_start)}s", C.W))
-    return new_count
-
-
 def step_deep_scan(cfg: ScannerConfig) -> int:
     hits_file = BASE / "cf_hits.txt"
     verified_file = BASE / "verified.txt"
@@ -733,8 +631,6 @@ def main() -> None:
                         help="仅处理 IPv6 (跳过 masscan, 导出 IPv6 CIDR 列表)")
     parser.add_argument("--smart", action="store_true",
                         help="智能子网分级: 大 CIDR 拆 /24 抽样探活, 仅扫活跃子网")
-    parser.add_argument("--no-cert", action="store_true",
-                        help="跳过 TLS 证书反查步骤")
     a = parser.parse_args()
 
     if a.geo_update:
@@ -851,26 +747,7 @@ def main() -> None:
             else:
                 print(c("  [已跳过] 智能子网分级 (全量扫描)", C.G))
 
-    do_cert = True
-    if a.no_cert:
-        do_cert = False
-        print(c("  [已跳过] TLS 证书反查 (--no-cert)", C.G))
-    elif not sys.argv[1:] and not a.targets:
-        try:
-            ch = input(c("  是否启用 TLS 证书反查？(y/n, 回车默认跳过): ", C.Y)).strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            ch = ""
-        if ch == "y":
-            print(c("  [已确认] TLS 证书反查 (SAN -> IP 扩充节点)", C.G))
-        else:
-            do_cert = False
-            print(c("  [已跳过] TLS 证书反查 (手动关闭)", C.G))
-    else:
-        print(c("  [已确认] TLS 证书反查 (SAN -> IP 扩充节点)", C.G))
-
     total_steps = 2 if a.skip_masscan else 3
-    if do_cert:
-        total_steps += 1
     do_speed = a.speed
     do_deep = a.deep
     if not do_speed:
@@ -914,9 +791,6 @@ def main() -> None:
         steps.append((f"Step {step_num}  Masscan 端口扫描", lambda: step_masscan(cfg)))
     step_num += 1
     steps.append((f"Step {step_num}  CF 检测 + API 精筛", lambda: _pipeline(cfg)))
-    if do_cert:
-        step_num += 1
-        steps.append((f"Step {step_num}  TLS 证书反查", lambda: step_cert_enum(cfg)))
     if do_deep:
         step_num += 1
         steps.append((f"Step {step_num}  深度宽端口扫描", lambda: step_deep_scan(cfg)))
@@ -983,10 +857,6 @@ def main() -> None:
                 total_open = result
             elif label.startswith("Step 3") or ("CF 检测" in label):
                 cf_nodes, passed_count = result
-            elif "证书反查" in label:
-                cert_new = result
-                if cert_new:
-                    passed_count += cert_new
         except Exception as e:
             print(c(f"  [FAIL] {e}", C.Y))
             sys.exit(1)
