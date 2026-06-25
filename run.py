@@ -169,6 +169,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
         prefix = f"[{bi + 1}/{batch_total}] " if batch_total > 1 else ""
 
         def _masscan_progress(pct, _extra):
+            elapsed = time.time() - step_start
             eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
             eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒".rstrip(".") if pct > 1 else ""
             write_progress(pct, prefix + eta_s)
