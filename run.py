@@ -942,7 +942,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             write_progress(pct, f" | CF检测{eta_s}")
         elif typ == "log":
             msg = str(data)
-            if msg.startswith("API 验证"):
+            if msg.startswith("API 验证") or "Masscan 批次" in msg:
                 return
             print(f"  {msg}")
         elif typ == "error":
@@ -952,6 +952,9 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
 
     if os.path.exists("/usr/local/bin/masscan") or os.system("which masscan >/dev/null 2>&1") == 0:
         masscan_rate = probe_masscan_rate(quiet=True)
+        print("  " + "=" * 60)
+        print("  Masscan 端口扫描")
+        print("  " + "=" * 60)
         masscan_hits = run_masscan(cidr_file, cfg.scan_ports, masscan_rate, progress_callback=_cb)
     else:
         print("  Masscan 不可用，直接从 CIDR 扩展 IP 进行 cf-scanner 扫描...")
