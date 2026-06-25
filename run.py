@@ -946,41 +946,6 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
     cidrs = sorted(cidr_set)
     total_possible = sum(ipaddress.ip_network(c).num_addresses for c in cidrs)
 
-    saved_ports = cfg.scan_ports
-    try:
-        inp = input(c("  端口模式 (回车=默认 / w=宽端口 / r=随机5 / 自定义): ", C.Y)).strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        inp = ""
-    if inp == "w":
-        cfg.scan_ports = WIDE_PORTS
-    elif inp == "r":
-        cfg.scan_ports = random_ports()
-        print(f"  随机端口: {cfg.scan_ports}")
-    elif inp:
-        parsed = parse_ports(inp)
-        if parsed:
-            cfg.scan_ports = parsed
-    port_desc = f"端口 ({port_count(cfg.scan_ports)} 个)"
-    print(c(f"  [已确认] 端口模式: {port_desc}", C.G))
-
-    do_speed_mine = False
-    try:
-        spd = input(c("  是否测速？(y/n, 回车跳过): ", C.Y)).strip().lower()
-        do_speed_mine = spd == "y"
-    except (EOFError, KeyboardInterrupt):
-        pass
-    if not do_speed_mine:
-        print(c("  [已跳过] 测速", C.G))
-
-    do_deep_mine = False
-    try:
-        dp = input(c("  深度扫描？(y/n, 回车跳过): ", C.Y)).strip().lower()
-        do_deep_mine = dp == "y"
-    except (EOFError, KeyboardInterrupt):
-        pass
-    if not do_deep_mine:
-        print(c("  [已跳过] 深度扫描", C.G))
-
     print(f"  深度挖掘: {len(existing_ips)}条IP -> {len(cidrs)}段 / {prefix} CIDR（{total_possible:,}条IP）")
 
     ensure_cf_scanner()
