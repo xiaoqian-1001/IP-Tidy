@@ -125,11 +125,12 @@ def main() -> None:
             done = i + len(chunk)
             rate = done / elapsed if elapsed > 0 else 0
             eta_min = (total - done) / rate / 60 if rate > 0 else 0
+            eta_m, eta_s = divmod(int(eta_min * 60), 60)
             write_progress(done / total * 100,
-                           f" | 通过 {passed} | {rate:.1f}/s | ETA {eta_min:.1f}m")
+                           f" | 通过 {passed} | {rate:.1f}/s | ETA {eta_m}分{eta_s}秒")
 
     elapsed = int(time.time() - start)
-    write_progress_done(f" | 通过 {passed}/{total} | {elapsed // 60}min {elapsed % 60}s")
+    write_progress_done(f" | 通过 {passed}/{total} | {elapsed // 60}分{elapsed % 60}秒")
 
 
 if __name__ == "__main__":

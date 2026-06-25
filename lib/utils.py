@@ -132,7 +132,7 @@ def print_result_header(total_asn: int, total_cidr: int,
 def print_total_time(elapsed: float) -> None:
     """打印总耗时"""
     m, s = divmod(int(elapsed), 60)
-    print(c(f"  总耗时: {m}m {s}s", C.W))
+    print(c(f"  总耗时: {m}分{s}秒", C.W))
 
 
 # ── 公网 IP 获取（并发 HTTP + DNS 兜底） ──
