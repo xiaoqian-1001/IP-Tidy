@@ -944,7 +944,6 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             msg = str(data)
             if msg.startswith("API 验证"):
                 return
-            sys.stderr.write("\n"); sys.stderr.flush()
             print(f"  {msg}")
         elif typ == "error":
             print(c(f"  [FAIL] {data}", C.Y))
@@ -953,9 +952,6 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
 
     if os.path.exists("/usr/local/bin/masscan") or os.system("which masscan >/dev/null 2>&1") == 0:
         masscan_rate = probe_masscan_rate(quiet=True)
-        print("  " + "=" * 60)
-        print("  Masscan 端口扫描")
-        print("  " + "=" * 60)
         masscan_hits = run_masscan(cidr_file, cfg.scan_ports, masscan_rate, progress_callback=_cb)
     else:
         print("  Masscan 不可用，直接从 CIDR 扩展 IP 进行 cf-scanner 扫描...")
@@ -970,9 +966,6 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
         print(c("  深度挖掘: 未发现开放端口", C.Y))
         cidr_file.unlink(missing_ok=True)
         return 0
-
-    write_progress_done(" | ETA 0分0秒")
-    print(f"  开放端口: {len(masscan_hits)}（Syn-Ack确认）")
 
     cf_in = BASE / ".deep_mine_cf_in.txt"
     cf_out = BASE / ".deep_mine_cf_out.txt"
