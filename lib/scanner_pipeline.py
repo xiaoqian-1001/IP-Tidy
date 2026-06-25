@@ -190,7 +190,7 @@ def run_masscan(cidr_file: Path, ports_str: str, rate: int,
                 pass
 
     if progress_callback:
-        progress_callback("log", f"masscan 开放端口: {len(all_open)}（Syn-Ack确认）")
+        progress_callback("log", f"开放端口: {len(all_open)}（Syn-Ack确认）")
     return all_open
 
 
