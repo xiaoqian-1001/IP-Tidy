@@ -38,7 +38,7 @@ from lib.scanner_utils import (
     find_iface, probe_masscan_rate, detect_hardware, tcp_latency, cf_download, test_one,
     read_masscan_stderr,
     read_default_ports, parse_targets, expand_cidrs, port_count,
-    split_port_batches, adjust_concurrency,
+    split_port_batches, adjust_concurrency, random_ports,
     WIDE_PORTS, cidr_count,
     CF_SCANNER, VERIFY_PY, API_URL, _MASSCAN_BATCH,
 )
