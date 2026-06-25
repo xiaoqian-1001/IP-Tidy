@@ -367,8 +367,8 @@ def enrich_geoip(results: list[dict]) -> None:
             if info:
                 if info.get("country") and not r.get("country"):
                     r["country"] = info["country"]
-                if info.get("city") and not r.get("city"):
-                    r["city"] = info["city"]
+                if info.get("city") and not r.get("region"):
+                    r["region"] = info["city"]
                 if info.get("isp"):
                     r["isp"] = info["isp"]
         except Exception:
