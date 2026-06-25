@@ -1,8 +1,8 @@
-# IP-Tidy v2.0.3
+# IP-Tidy v2.1.0
 
 > **xiaoqian ASN NSD TOOL** -- ASN / CIDR -> Masscan -> TLS 检测 -> CF 节点 CSV
 
-一键输入 ASN 或 CIDR（支持 IPv4/IPv6），自动完成 IP 段解析、高速端口扫描、Cloudflare 反代节点检测、TLS 证书反查扩充节点池，输出结构化 CSV 并提供 HTTP 下载。
+支持 CLI 和 WEB 两种模式。一键输入 ASN 或 CIDR（支持 IPv4/IPv6），自动完成 IP 段解析、高速端口扫描、Cloudflare 反代节点检测、TLS 证书反查扩充节点池，输出结构化 CSV。
 
 ![image](img/3094.png)
 
@@ -12,6 +12,7 @@
 
 | 特性 | 说明 |
 |------|------|
+| 双模式 | CLI 终端 + WEB 界面两种操作方式 |
 | 双栈支持 | IPv4 / IPv6 CIDR 全链路解析、合并、去重、分离导出 |
 | 智能子网分级 | 大 CIDR 自动拆 /24 抽样探活，仅扫活跃子段 (`--smart`) |
 | 证书反查 | TLS SAN 提取 -> DNS 解析 -> API 交叉验证，自动扩充节点 |
@@ -22,6 +23,7 @@
 | 硬件自适应 | 实测网卡上限，CPU/内存动态调参 |
 | 断点续扫 | `--skip-masscan` 跳过扫描复用已有结果 |
 | 端口拆分 | 超大范围自动拆批，进度平滑 |
+| 端口模式 | 默认/宽端口/随机/自定义 四种端口选择 |
 | ASN 缓存 | RIPEStat 结果 7 天缓存，失败回退 |
 | 跨平台 | Linux / macOS / Windows (WSL2) |
 
@@ -63,6 +65,45 @@ ip-tidy uninstall                    # 卸载
 ```
 
 无参数运行自动进入交互模式，按提示输入即可。完成后自动启动 HTTP 下载服务。
+
+---
+
+## WEB 模式
+
+提供图形化界面，完全复刻 CLI 全部功能。
+
+### 启动
+
+```bash
+# 确保依赖
+pip install flask
+
+# 启动 WEB 服务
+python3 web_server.py --port 8899
+
+# 或使用启动脚本
+bash start_web.sh
+```
+
+### 功能
+
+| 功能 | 说明 |
+|------|------|
+| ASN / CIDR 扫描 | 输入 ASN 编号或 CIDR 网段，支持混合输入 |
+| 自定义 IP 扫描 | 直接粘贴 IP 列表 |
+| 端口模式 | 默认端口 / 宽端口(10000-65535) / 随机端口(加权) / 自定义端口(含范围语法) |
+| 扫描管道 | masscan SYN 扫描 -> cf-scanner TLS 检测 -> verify.py API 精筛 |
+| 证书反查 | crt.sh CT 日志查询 -> DNS 解析 -> API 交叉验证 |
+| 测试延迟 | 单点 TCP 延迟测试 |
+| 测速下载 | 多 URL 并行下载测速 |
+| 数据中心查询 | 通过 API 查询 IP 归属数据中心 |
+| CSV 导出 | 完整列：IP,端口,TLS,数据中心,地区,城市,延迟,速度,ASN,协议 |
+| v6 导出 | IPv6 结果导出为 CIDR 清单 |
+| 服务器信息 | 状态栏显示 CPU/内存/cf-scanner/GeoIP 状态 |
+
+### 截图
+
+![WEB 界面](img/web.png)
 
 ---
 
@@ -204,6 +245,10 @@ http://1.2.3.4:8899/output_AS209242_20260623_120000.csv
 IP-Tidy/
   run.py                 主入口，流程编排 + 交互界面
   verify.py              API 精筛 (含重试)
+  web_server.py          WEB 模式后端 (Flask + SSE)
+  web/
+    index.html           WEB 前端界面
+  start_web.sh           WEB 模式启动脚本
   lib/utils.py           公共工具 (进度条 / 网络检测 / 端口解析)
   lib/geoip.py           离线 IP 地理信息查询 (MaxMind GeoLite2)
   cf-scanner-src/        Go 源码 (TLS 握手检测)
@@ -237,7 +282,8 @@ IP-Tidy/
 |------|------|
 | [masscan](https://github.com/robertdavidgraham/masscan) | 高速 SYN 端口扫描 |
 | Go >= 1.22 | 编译 cf-scanner (TLS 握手检测) |
-| Python >= 3.8 | 流程编排、API 验证、交互界面 |
+| Python >= 3.8 | 流程编排、API 验证、WEB 服务 |
+| Flask | WEB 模式后端框架 (Python) |
 | maxminddb | GeoLite2 离线数据库读取 (pypi) |
 | dnsutils | DNS 方式获取公网 IP |
 | [RIPEStat API](https://stat.ripe.net/) | ASN -> CIDR (免费公开) |
@@ -251,6 +297,18 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：NAT 容器、OpenVZ/LXC (
 ---
 
 ## 更新日志
+
+### v2.1.0
+- WEB 模式: Flask + SSE 后端，完全复刻 CLI 全部功能
+- WEB 前端: 仿 CFData-WEB 风格界面，日志窗口实时查看进度
+- 端口模式选择器: 默认/宽端口/随机/自定义四种模式
+- masscan + cf-scanner 双阶段管道集成
+- 智能子网探活: 大 CIDR 拆 /24 抽样 TCP 探测
+- GeoIP 状态栏显示，服务器硬件信息
+- RIPEStat ASN CIDR 解析 (7天缓存)
+- crt.sh 证书反查 + curl 下载测速
+- CSV 导出完整对齐 run.py 格式 (含协议列)
+- v6-only 模式导出 CIDR 清单
 
 ### v2.0.3
 - 证书反查改用 crt.sh CT 日志查询域名，替代 TLS 握手 SAN 提取，命中率大幅提升
