@@ -705,7 +705,7 @@ def main() -> None:
             else:
                 print(c("  [已跳过] 智能子网分级 (全量扫描)", C.G))
 
-    total_steps = 2 if a.skip_masscan else 3
+    total_steps = 3 if a.skip_masscan else 4
     do_speed = a.speed
     do_deep = a.deep
     if not do_speed:
@@ -728,6 +728,7 @@ def main() -> None:
         total_steps += 1
     if do_deep:
         total_steps += 1
+    total_steps += 1
     if a.smart:
         total_steps += 1
 
@@ -746,6 +747,8 @@ def main() -> None:
         steps.append((f"Step {step_num}  Masscan 端口扫描", lambda: step_masscan(cfg)))
     step_num += 1
     steps.append((f"Step {step_num}  CF 检测 + API 精筛", lambda: _pipeline(cfg)))
+    step_num += 1
+    steps.append((f"Step {step_num}  深度挖掘 (扩展 /16)", lambda: step_deep_mine(cfg)))
     if do_deep:
         step_num += 1
         steps.append((f"Step {step_num}  深度宽端口扫描", lambda: step_deep_scan(cfg)))
@@ -791,6 +794,7 @@ def main() -> None:
     total_open = 0
     cf_nodes = 0
     passed_count = 0
+    deep_mine_count = 0
 
     for label, fn in steps:
         print_step(label)
@@ -809,26 +813,14 @@ def main() -> None:
                 total_open = result
             elif label.startswith("Step 3") or ("CF 检测" in label):
                 cf_nodes, passed_count = result
+            elif "深度挖掘" in label:
+                added = result
+                if added > 0:
+                    passed_count += added
+                    deep_mine_count = added
         except Exception as e:
             print(c(f"  [FAIL] {e}", C.Y))
             sys.exit(1)
-
-    deep_mine_count = 0
-    if passed_count > 0:
-        print(c(f"\n  [当前结果] 通过 {passed_count} 个 IP", C.G))
-        try:
-            ch = input(c("  是否启用深度挖掘？(提取 IP -> /16 CIDR 二次扫描, y/n, 回车跳过): ", C.Y)).strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            ch = ""
-        if ch == "y":
-            print(c("  [已确认] 深度挖掘 (/16 扩展扫描)", C.G))
-            deep_mine_added = step_deep_mine(cfg, passed_count)
-            if deep_mine_added > 0:
-                passed_count += deep_mine_added
-                deep_mine_count = deep_mine_added
-            print_sep("-", C.W)
-        else:
-            print(c("  [已跳过] 深度挖掘", C.G))
 
     verified_file = BASE / "verified.txt"
     csv_path = None
@@ -894,7 +886,7 @@ def main() -> None:
         _serve_download(csv_path)
 
 
-def step_deep_mine(cfg: ScannerConfig, existing_count: int) -> int:
+def step_deep_mine(cfg: ScannerConfig) -> int:
     verified_file = BASE / "verified.txt"
     if not verified_file.exists() or verified_file.stat().st_size == 0:
         return 0
@@ -911,6 +903,17 @@ def step_deep_mine(cfg: ScannerConfig, existing_count: int) -> int:
 
     if not existing_ips:
         return 0
+
+    print(f"  [当前结果] 通过 {len(existing_ips)} 个 IP")
+    try:
+        ch = input(c("  是否启用深度挖掘？(提取 IP -> /16 CIDR 二次扫描, y/n, 回车跳过): ", C.Y)).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        ch = ""
+    if ch != "y":
+        print(c("  [已跳过] 深度挖掘", C.G))
+        return 0
+
+    print(c("  [已确认] 深度挖掘 (/16 扩展扫描)", C.G))
 
     cidr_set: set[str] = set()
     for ip in existing_ips:
