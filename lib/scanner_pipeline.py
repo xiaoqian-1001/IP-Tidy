@@ -19,17 +19,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from .scanner_utils import (
     BASE, CF_SCANNER, VERIFY_PY, API_URL, WIDE_PORTS,
     _MASSCAN_BATCH,
-    split_v4_v6, cidr_count,
+    split_v4_v6,
     subnet_split, quick_probe, sample_ips,
     port_count, split_port_batches,
-    adjust_concurrency, detect_hardware,
-    masscan_adapter_ip, masscan_bin, probe_masscan_rate_fast,
+    masscan_adapter_ip, masscan_bin,
     read_masscan_stderr,
     crtsh_query, dns_resolve, verify_ip,
-    tcp_latency, cf_download, test_one,
-    read_default_ports, expand_cidrs,
-    finalize_results, build_dc_list,
-    SUBNET_SPLIT, SUBNET_PROBE, SUBNET_THRESHOLD, SUBNET_PORT, SUBNET_TIMEOUT,
+    SUBNET_PROBE, SUBNET_THRESHOLD, SUBNET_PORT, SUBNET_TIMEOUT,
 )
 
 _ASN_CACHE = BASE / ".asn_cache.json"

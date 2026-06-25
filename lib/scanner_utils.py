@@ -354,6 +354,35 @@ def tcp_latency(ip: str, port: int, timeout: float = 5) -> int:
         return 0
 
 
+def http_latency(ip: str, port: int = 443, timeout: float = 5) -> int:
+    try:
+        url = f"http://{ip}:{port}/"
+        req = urllib.request.Request(url, method="HEAD")
+        t0 = time.time()
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            elapsed = round((time.time() - t0) * 1000)
+        return elapsed
+    except Exception:
+        try:
+            url = f"https://{ip}:{port}/"
+            req = urllib.request.Request(url, method="HEAD")
+            ctx = ssl_create_unverified()
+            t0 = time.time()
+            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+                elapsed = round((time.time() - t0) * 1000)
+            return elapsed
+        except Exception:
+            return 0
+
+
+def ssl_create_unverified():
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 def cf_download(ip: str, port: str) -> float:
     best = 0.0
     for host, url, size_mb, _label in _SPEED_TESTS:
@@ -378,6 +407,7 @@ def test_one(parts: list[str]) -> tuple[str, int, float]:
     ip, port = parts[0], parts[1]
     lat = tcp_latency(ip, int(port))
     spd = cf_download(ip, port) if lat > 0 else 0.0
+    hlat = http_latency(ip, int(port)) if lat > 0 else 0
     result = parts[:]
     result[6] = str(lat)
     result[7] = str(round(spd, 2))
