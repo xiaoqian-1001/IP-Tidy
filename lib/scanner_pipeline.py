@@ -238,7 +238,7 @@ def verify_batch(entries: list[str], concurrency: int = 32,
     inp.write_text("\n".join(entries))
 
     if progress_callback:
-        progress_callback("log", f"API 验证 {len(entries)} 个节点 (并发={concurrency})...")
+        progress_callback("log", f"API 验证 {len(entries)} 个 IP (并发={concurrency})...")
 
     subprocess.run([
         sys.executable, str(VERIFY_PY),

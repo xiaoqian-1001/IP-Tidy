@@ -1,5 +1,5 @@
 """
-IP-Tidy -- ASN -> CIDR -> masscan -> CF 反代节点检测 -> CSV 输出
+IP-Tidy -- ASN -> CIDR -> masscan -> CF 反代 IP 检测 -> CSV 输出
 CLI 模式入口: 终端交互 + 渲染，核心逻辑由共享模块提供
 """
 
@@ -155,6 +155,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
     batch_total = len(batches)
     sudo = [] if os.geteuid() == 0 else ["sudo", "-n"]
     adapter_ip = None
+    step_start = time.time()
 
     for bi, batch_ports in enumerate(batches):
         batch_xml = BASE / "masscan_result.xml" if batch_total == 1 else BASE / f"masscan_batch_{bi + 1}.xml"
@@ -168,7 +169,10 @@ def step_masscan(cfg: ScannerConfig) -> int:
         prefix = f"[{bi + 1}/{batch_total}] " if batch_total > 1 else ""
 
         def _masscan_progress(pct, extra):
-            write_progress(pct, prefix + extra)
+            elapsed = time.time() - step_start
+            eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
+            eta_s = f" | ETA {int(eta // 60)}m{int(eta % 60)}s" if pct > 1 else ""
+            write_progress(pct, prefix + extra + eta_s)
 
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
                                 stdin=subprocess.DEVNULL,
@@ -337,7 +341,7 @@ def _pipeline(cfg: ScannerConfig) -> tuple[int, int]:
 
     rate_pct = passed / hits * 100 if hits else 0
     rate_color = C.G if rate_pct >= 50 else C.Y
-    msg = f"  CF 节点: {hits}  |  精筛通过: {rate_pct:.0f}% ({passed}/{hits})"
+    msg = f"  CF IP: {hits}  |  精筛通过: {rate_pct:.0f}% ({passed}/{hits})"
     print(c(msg, rate_color))
     print(c(f"  本步耗时: {int(time.time() - step_start)}s", C.W))
     return hits, passed
@@ -347,7 +351,7 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
     hits_file = BASE / "cf_hits.txt"
     verified_file = BASE / "verified.txt"
     if not hits_file.exists() or hits_file.stat().st_size == 0:
-        print("  无 CF 节点，跳过")
+        print("  无 CF IP，跳过")
         return 0
 
     ips: set[str] = set()
@@ -506,7 +510,7 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
 def step_speed_test(cfg: ScannerConfig) -> None:
     verified_file = BASE / "verified.txt"
     if not verified_file.exists() or verified_file.stat().st_size == 0:
-        print("  无节点，跳过")
+        print("  无 IP，跳过")
         return
 
     adj = adjust_concurrency(cfg.api_concurrency, cfg.cpu)
@@ -518,12 +522,12 @@ def step_speed_test(cfg: ScannerConfig) -> None:
         lines = [l.strip() for l in f
                  if l.strip() and not l.startswith("#")]
     if len(lines) <= 1:
-        print("  无节点，跳过")
+        print("  无 IP，跳过")
         return
 
     header, entries = lines[0], lines[1:]
     total = len(entries)
-    print(f"  节点数: {total}")
+    print(f"  IP 数: {total}")
 
     results: list[tuple[str, int]] = []
     with ThreadPoolExecutor(max_workers=min(total, cfg.api_concurrency)) as ex:
@@ -548,7 +552,7 @@ def step_speed_test(cfg: ScannerConfig) -> None:
         f.write(header + "\n")
         for row, _ in results:
             f.write(row + "\n")
-    write_progress_done(f" | 测速完成: {total} 个节点")
+    write_progress_done(f" | 测速完成: {total} 个 IP")
 
 
 def _smart_wrapper(cfg: ScannerConfig) -> list[str]:
@@ -580,7 +584,7 @@ def main() -> None:
     main_start = time.time()
     parser = argparse.ArgumentParser(
         prog="xiaoqian",
-        description=f"IP-Tidy {VERSION} -- CIDR/ASN -> masscan -> CF 节点检测",
+        description=f"IP-Tidy {VERSION} -- CIDR/ASN -> masscan -> CF IP 检测",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="示例:\n"
                "  ip-tidy AS209242\n"
@@ -811,7 +815,7 @@ def main() -> None:
 
     deep_mine_count = 0
     if passed_count > 0:
-        print(c(f"\n  [当前结果] 通过 {passed_count} 个节点", C.G))
+        print(c(f"\n  [当前结果] 通过 {passed_count} 个 IP", C.G))
         try:
             ch = input(c("  是否启用深度挖掘？(提取 IP -> /16 CIDR 二次扫描, y/n, 回车跳过): ", C.Y)).strip().lower()
         except (EOFError, KeyboardInterrupt):
@@ -920,7 +924,7 @@ def step_deep_mine(cfg: ScannerConfig, existing_count: int) -> int:
 
     cidrs = sorted(cidr_set)
     total_possible = sum(ipaddress.ip_network(c).num_addresses for c in cidrs)
-    print(f"  深度挖掘: {len(existing_ips)} 节点 -> {len(cidrs)} 个 /16 CIDR ({total_possible:,} IP)")
+    print(f"  深度挖掘: {len(existing_ips)} IP -> {len(cidrs)} 个 /16 CIDR ({total_possible:,} IP)")
 
     existing_content = verified_file.read_text()
     ensure_cf_scanner()
@@ -929,6 +933,30 @@ def step_deep_mine(cfg: ScannerConfig, existing_count: int) -> int:
     cidr_file.write_text("\n".join(cidrs) + "\n")
 
     step_start = time.time()
+
+    def _cb(typ, data):
+        if typ == "masscan_progress":
+            cur = data.get("current", 0)
+            total = data.get("total", 1)
+            pct = min(cur / total * 100, 100)
+            elapsed = time.time() - step_start
+            eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
+            eta_s = f" | ETA {int(eta // 60)}m{int(eta % 60)}s" if pct > 1 else ""
+            write_progress(pct, f" | masscan {data.get('stage','')}{eta_s}")
+        elif typ == "scan_progress":
+            cur = data.get("current", 0)
+            total = data.get("total", 1)
+            pct = min(cur / total * 100, 100)
+            elapsed = time.time() - step_start
+            eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
+            eta_s = f" | ETA {int(eta // 60)}m{int(eta % 60)}s" if pct > 1 else ""
+            write_progress(pct, f" | cf-scanner {data.get('stage','')}{eta_s}")
+        elif typ == "log":
+            sys.stderr.write("\n"); sys.stderr.flush()
+            print(f"  {data}")
+        elif typ == "error":
+            print(c(f"  [FAIL] {data}", C.Y))
+
     masscan_hits: list[str] = []
 
     if os.path.exists("/usr/local/bin/masscan") or os.system("which masscan >/dev/null 2>&1") == 0:
@@ -936,7 +964,7 @@ def step_deep_mine(cfg: ScannerConfig, existing_count: int) -> int:
         batch_count = len(split_port_batches(cfg.scan_ports))
         ports_display = cfg.scan_ports[:60]
         print(f"  masscan 扫描 {len(cidrs)} CIDR ({port_count(cfg.scan_ports)} 端口, {masscan_rate} pps, {batch_count} 批)...")
-        masscan_hits = run_masscan(cidr_file, cfg.scan_ports, masscan_rate)
+        masscan_hits = run_masscan(cidr_file, cfg.scan_ports, masscan_rate, progress_callback=_cb)
     else:
         print("  masscan 不可用，直接从 CIDR 扩展 IP 进行 cf-scanner 扫描...")
         port_list = [p.strip() for p in cfg.scan_ports.split(",") if p.strip().isdigit()]
@@ -946,6 +974,7 @@ def step_deep_mine(cfg: ScannerConfig, existing_count: int) -> int:
                 masscan_hits.append(f"{ip}:{p}")
 
     if not masscan_hits:
+        write_progress_done(" | 无开放端口")
         print(c("  深度挖掘: 未发现开放端口", C.Y))
         cidr_file.unlink(missing_ok=True)
         return 0
@@ -956,16 +985,18 @@ def step_deep_mine(cfg: ScannerConfig, existing_count: int) -> int:
 
     adj_cf = adjust_concurrency(cfg.cf_concurrency, cfg.cpu)
     print(f"  cf-scanner TLS 检测 ({len(masscan_hits)} 目标, 并发={adj_cf})...")
-    hit_count = run_cf_scanner(cf_in, cf_out, adj_cf)
+    hit_count = run_cf_scanner(cf_in, cf_out, adj_cf, progress_callback=_cb)
 
     if hit_count == 0:
-        print(c("  深度挖掘: 未检测到 CF 节点", C.Y))
+        write_progress_done(" | CF 未命中")
+        print(c("  深度挖掘: CF 未命中", C.Y))
         for f in (cidr_file, cf_in, cf_out):
             try: f.unlink()
             except OSError: pass
         return 0
 
-    print(f"  cf-scanner 命中 {hit_count} 个节点")
+    write_progress_done(f" | cf-scanner 命中 {hit_count}")
+    print(f"  cf-scanner 命中 {hit_count} IP")
 
     hits: list[str] = []
     with open(cf_out) as f:
@@ -978,7 +1009,7 @@ def step_deep_mine(cfg: ScannerConfig, existing_count: int) -> int:
             hits.append(line)
 
     adj_api = adjust_concurrency(cfg.api_concurrency, cfg.cpu)
-    new_results = verify_batch(hits, concurrency=adj_api)
+    new_results = verify_batch(hits, concurrency=adj_api, progress_callback=_cb)
     if new_results:
         enrich_geoip(new_results)
 
@@ -994,8 +1025,11 @@ def step_deep_mine(cfg: ScannerConfig, existing_count: int) -> int:
         try: f.unlink()
         except OSError: pass
 
-    print(c(f"  深度挖掘: +{len(real_new)} 个新节点", C.G))
-    print(c(f"  本步耗时: {int(time.time() - step_start)}s", C.W))
+    elapsed = int(time.time() - step_start)
+    m, s = divmod(elapsed, 60)
+    write_progress_done(f" | 深度挖掘: +{len(real_new)} 新 IP | {m}m{s}s" if m else f" | 深度挖掘: +{len(real_new)} 新 IP | {s}s")
+    print(c(f"  深度挖掘: +{len(real_new)} 个新 IP", C.G))
+    print(c(f"  本步耗时: {elapsed}s", C.W))
     return len(real_new)
 
 
