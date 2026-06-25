@@ -243,14 +243,17 @@ http://1.2.3.4:8899/output_AS209242_20260623_120000.csv
 
 ```
 IP-Tidy/
-  run.py                 主入口，流程编排 + 交互界面
-  verify.py              API 精筛 (含重试)
+  run.py                 CLI 模式入口，终端交互 + 渲染
   web_server.py          WEB 模式后端 (Flask + SSE)
   web/
     index.html           WEB 前端界面
   start_web.sh           WEB 模式启动脚本
-  lib/utils.py           公共工具 (进度条 / 网络检测 / 端口解析)
-  lib/geoip.py           离线 IP 地理信息查询 (MaxMind GeoLite2)
+  verify.py              API 精筛 (含重试)
+  lib/
+    scanner_utils.py     共享工具层 (pure function，无副作用)
+    scanner_pipeline.py  共享扫描管道层 (CLI/WEB 共用)
+    utils.py             终端工具 (进度条 / 网络检测 / 端口解析)
+    geoip.py             离线 IP 地理信息查询 (MaxMind GeoLite2)
   cf-scanner-src/        Go 源码 (TLS 握手检测)
   cf-scanner             编译产物 (gitignore)
   install.sh             一键安装
@@ -261,6 +264,20 @@ IP-Tidy/
 ```
 
 ---
+
+## 架构设计
+
+CLI 和 WEB 模式共享同一套扫描管道，代码分层：
+
+```
+lib/scanner_utils.py     纯函数层: CIDR 拆分、端口解析、子网探活、延迟测量、证书查询等
+lib/scanner_pipeline.py  扫描管道层: ASN→CIDR、masscan、cf-scanner、verify、智能探活、证书反查
+                         通过 progress_callback 报告进度，CLI 用 write_progress，WEB 用 SSE
+run.py                   CLI 入口: argparse + 终端交互 + 步骤编排 + 终端渲染
+web_server.py            WEB 入口: Flask + SSE 队列 + 步骤编排 + 前端推送
+```
+
+修改扫描逻辑只需改 `lib/scanner_pipeline.py`，两种模式自动同步。
 
 ## 硬件自适应
 
