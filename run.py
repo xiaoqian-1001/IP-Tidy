@@ -129,7 +129,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
     if not ip_file.exists() or ip_file.stat().st_size == 0:
         ip_file = BASE / "cidrs.txt"
         if not ip_file.exists() or ip_file.stat().st_size == 0:
-            print(c("  [FAIL] 无 IPv4 CIDR，跳过 masscan", C.Y))
+            print(c("  [FAIL] 无 IPv4 CIDR，跳过 Masscan", C.Y))
             return 0
 
     if ip_file.name == "cidrs.txt":
@@ -140,7 +140,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
                 if line and ":" not in line:
                     v4_only.append(line)
         if not v4_only:
-            print(c("  [FAIL] cidrs.txt 无 IPv4，跳过 masscan", C.Y))
+            print(c("  [FAIL] cidrs.txt 无 IPv4，跳过 Masscan", C.Y))
             return 0
         tmp_v4 = BASE / "cidrs_v4.txt"
         tmp_v4.write_text("\n".join(v4_only) + "\n")
@@ -169,9 +169,8 @@ def step_masscan(cfg: ScannerConfig) -> int:
         prefix = f"[{bi + 1}/{batch_total}] " if batch_total > 1 else ""
 
         def _masscan_progress(pct, _extra):
-            elapsed = time.time() - step_start
             eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
-            eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒" if pct > 1 else ""
+            eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒".rstrip(".") if pct > 1 else ""
             write_progress(pct, prefix + eta_s)
 
         proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
@@ -185,7 +184,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
             sys.stderr.flush()
             err = "".join(stderr_lines).lower()
             if "permission denied" in err or "init: failed" in err:
-                print(c("  [FAIL] masscan 需要 raw socket 权限", C.Y))
+                print(c("  [FAIL] Masscan 需要 raw socket 权限", C.Y))
                 if os.geteuid() != 0:
                     print("  解决: sudo python3 run.py ...  (以 root 运行)")
                     print("  或: sudo setcap cap_net_raw+ep $(which masscan)")
@@ -196,7 +195,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
             else:
                 sys.stderr.write("".join(stderr_lines))
                 sys.stderr.flush()
-                print(c(f"\n  [FAIL] masscan 返回码 {proc.returncode}", C.Y))
+                print(c(f"\n  [FAIL] Masscan 返回码 {proc.returncode}", C.Y))
             raise subprocess.CalledProcessError(proc.returncode, cmd)
 
         write_progress_done(prefix)
@@ -312,7 +311,7 @@ def _pipeline(cfg: ScannerConfig) -> tuple[int, int]:
                 elapsed = time.time() - t0
                 eta = (elapsed / pct * (100 - pct)) if pct > 0 else 0
                 extra = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒" if pct > 0.5 else ""
-                stage_label = " | API精筛" if verify_running.is_set() else " | CF检测"
+                stage_label = " | CF检测"
                 last_extra = extra + stage_label
                 write_progress(pct, last_extra)
                 last_pct = pct
@@ -479,7 +478,7 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
 
     result_file = BASE / "masscan_result.txt"
     result_file.write_text("\n".join(all_open) + "\n")
-    print(c(f"  深度 masscan 完成: {len(all_open)} 开放端口", C.LB))
+    print(c(f"  深度 Masscan 完成: {len(all_open)} 开放端口", C.LB))
 
     if not all_open:
         print("  无新增开放端口")
@@ -609,9 +608,9 @@ def main() -> None:
     parser.add_argument("-R", "--random", action="store_true",
                         help="随机 5 端口快速探测")
     parser.add_argument("-r", "--rate", metavar="PPS", type=int,
-                        help="masscan 发包速率 (默认自动探测)")
+                        help="Masscan 发包速率 (默认自动探测)")
     parser.add_argument("--skip-masscan", action="store_true",
-                        help="跳过 masscan，使用已有 masscan_result.txt")
+                        help="跳过 Masscan，使用已有 masscan_result.txt")
     parser.add_argument("-d", "--deep", action="store_true",
                         help="深度扫描: 对 CF 命中的 IP 追加 55546 个端口扫描")
     parser.add_argument("-v", "--version", action="version",
@@ -749,7 +748,7 @@ def main() -> None:
         cfg.smart_mode = True
         steps.append((f"Step {step_num}  子网分级探活", lambda: _smart_wrapper(cfg)))
     if a.skip_masscan:
-        print(c("  (跳过 masscan, 使用已有结果)", C.W))
+        print(c("  (跳过 Masscan, 使用已有结果)", C.W))
     else:
         step_num += 1
         steps.append((f"Step {step_num}  Masscan 端口扫描", lambda: step_masscan(cfg)))
@@ -997,7 +996,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             pct = min(cur / total * 100, 100)
             elapsed = time.time() - step_start
             eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
-            eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒" if pct > 1 else ""
+            eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒".rstrip(".") if pct > 1 else ""
             write_progress(pct, eta_s)
         elif typ == "scan_progress":
             cur = data.get("current", 0)
@@ -1005,26 +1004,27 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             pct = min(cur / total * 100, 100)
             elapsed = time.time() - step_start
             eta = (elapsed / pct * (100 - pct)) if pct > 1 else 0
-            eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒" if pct > 1 else ""
+            eta_s = f" | ETA {int(eta // 60)}分{int(eta % 60)}秒".rstrip(".") if pct > 1 else ""
             write_progress(pct, f" | CF检测{eta_s}")
         elif typ == "log":
+            msg = str(data)
+            if msg.startswith("API 验证"):
+                return
             sys.stderr.write("\n"); sys.stderr.flush()
-            print(f"  {data}")
+            print(f"  {msg}")
         elif typ == "error":
             print(c(f"  [FAIL] {data}", C.Y))
 
     masscan_hits: list[str] = []
 
     if os.path.exists("/usr/local/bin/masscan") or os.system("which masscan >/dev/null 2>&1") == 0:
-        masscan_rate = probe_masscan_rate()
-        batch_count = len(split_port_batches(cfg.scan_ports))
+        masscan_rate = probe_masscan_rate(quiet=True)
         print("  " + "=" * 60)
         print("  Masscan 端口扫描")
-        print(f"  " + "=" * 60)
-        print(f"  masscan 扫描 {len(cidrs)} CIDR ({port_count(cfg.scan_ports)} 端口, {masscan_rate} pps, {batch_count} 批)...")
-        masscan_hits = run_masscan(cidr_file, cfg.scan_ports, masscan_rate, progress_callback=_cb)
+        print("  " + "=" * 60)
+        masscan_hits = run_masscan(cidr_file, cfg.scan_ports, masscan_rate, progress_callback=None)
     else:
-        print("  masscan 不可用，直接从 CIDR 扩展 IP 进行 cf-scanner 扫描...")
+        print("  Masscan 不可用，直接从 CIDR 扩展 IP 进行 cf-scanner 扫描...")
         port_list = [p.strip() for p in cfg.scan_ports.split(",") if p.strip().isdigit()]
         ips = expand_cidrs(cidrs, max_ips=5000)
         for ip in ips:
@@ -1038,6 +1038,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
         return 0
 
     write_progress_done(" | ETA 0分0秒")
+    print(f"  开放端口: {len(masscan_hits)}（Syn-Ack确认）")
 
     cf_in = BASE / ".deep_mine_cf_in.txt"
     cf_out = BASE / ".deep_mine_cf_out.txt"
@@ -1057,8 +1058,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             except OSError: pass
         return 0
 
-    cf_last_extra = f" | cf-scanner 命中 {hit_count}" + " "
-    write_progress_done(cf_last_extra)
+    write_progress_done(" | ETA 0分0秒 | CF检测")
 
     hits: list[str] = []
     with open(cf_out) as f:
@@ -1090,8 +1090,9 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
     rate = len(new_results) / hit_count * 100 if hit_count else 0
     elapsed = int(time.time() - step_start)
     m, s = divmod(elapsed, 60)
-    done_extra = f" | {m}分{s}秒" if m else f" | {elapsed}秒"
-    write_progress_done(done_extra.ljust(18))
+    ep = f"{m}分{s}秒" if m else f"{elapsed}秒"
+    done_extra = f" | 通过 {len(new_results)}/{hit_count} | {ep} | API精筛"
+    write_progress_done(done_extra)
     print(c(f"  CF可用IP数量: {hit_count}  |  精筛通过率: {rate:.0f}% ({len(new_results)}/{hit_count})  |  深度挖掘: +{len(real_new)} 新 IP", C.G))
     print(c(f"  本步耗时: {m}分{s}秒" if m else f"  本步耗时: {elapsed}秒", C.W))
     return len(real_new)

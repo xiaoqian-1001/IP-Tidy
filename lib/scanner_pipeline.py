@@ -118,7 +118,7 @@ def run_masscan(cidr_file: Path, ports_str: str, rate: int,
     sudo = [] if os.geteuid() == 0 else ["sudo", "-n"]
 
     if is_multi and progress_callback:
-        progress_callback("log", f"masscan: {total_ports} 端口 -> {len(batches)} 批次 (~{_MASSCAN_BATCH}/批)")
+        progress_callback("log", f"Masscan: {total_ports} 端口 -> {len(batches)} 批次 (~{_MASSCAN_BATCH}/批)")
 
     for bi, batch_ports in enumerate(batches):
         batch_xml = BASE / f".masscan_{sid}_b{bi+1}.xml" if is_multi else BASE / ".masscan_result.xml"
@@ -133,7 +133,7 @@ def run_masscan(cidr_file: Path, ports_str: str, rate: int,
 
         prefix = f"[{bi+1}/{len(batches)}] " if is_multi else ""
         if progress_callback:
-            progress_callback("log", f"{prefix}masscan 批次 {batch_ports[:60]}... ({rate} pps)")
+            progress_callback("log", f"{prefix}Masscan 批次 {batch_ports[:60]}... ({rate} pps)")
 
         def _masscan_progress(pct, extra):
             if progress_callback:
@@ -151,7 +151,7 @@ def run_masscan(cidr_file: Path, ports_str: str, rate: int,
             err_text = "".join(stderr_lines).lower()
             if "permission" in err_text or "init: failed" in err_text:
                 if progress_callback:
-                    progress_callback("error", "masscan 需要 raw socket 权限")
+                    progress_callback("error", "Masscan 需要 raw socket 权限")
                     progress_callback("log", "尝试: setcap cap_net_raw+ep $(which masscan)")
             return all_open
 
