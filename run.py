@@ -561,7 +561,7 @@ def _parse_custom_port(args: list[str]) -> Optional[str]:
 def main() -> None:
     main_start = time.time()
     parser = argparse.ArgumentParser(
-        prog="xiaoqian",
+        prog="ip",
         description=f"IP-Tidy {VERSION} -- CIDR/ASN -> masscan -> CF IP 检测",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="示例:\n"

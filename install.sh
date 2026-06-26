@@ -202,13 +202,13 @@ do_install() {
     rm -f "$PROJECT_DIR/cf-scanner"
     build_cf_scanner
 
-    local w="/usr/local/bin/xiaoqian"
+    local w="/usr/local/bin/ip"
     info "注册快捷命令 -> $w"
     local wrapper
-    wrapper=$(mktemp /tmp/xiaoqian_wrapper.XXXXXX)
+    wrapper=$(mktemp /tmp/ip_wrapper.XXXXXX)
     cat > "$wrapper" << 'WEOF'
 #!/usr/bin/env bash
-D="$HOME/ASNIPtest"
+D="$HOME/IP-Tidy"
 case "${1:-}" in
     update)    exec bash "$D/install.sh" update ;;
     uninstall) exec bash "$D/install.sh" uninstall ;;
@@ -221,9 +221,9 @@ WEOF
         warn "请手动运行: python3 $PROJECT_DIR/run.py"
     }
     $SUDO chmod +x "$w"
-    info "命令: xiaoqian [ASN/CIDR...] [-p PORTS] [-w] [-s] [-d] [-g]"
-    info "       xiaoqian -g (下载离线 GeoIP 数据库)"
-    info "       xiaoqian update / uninstall"
+    info "命令: ip [ASN/CIDR...] [-p PORTS] [-w] [-s] [-d] [-g]"
+    info "       ip -g (下载离线 GeoIP 数据库)"
+    info "       ip update / uninstall"
 
     echo ""
     echo -e "${GREEN}${BOLD}[OK] 安装完成，启动中...${NC}"

@@ -50,11 +50,11 @@ curl -fsSL https://raw.githubusercontent.com/xiaoqian-1001/IP-Tidy/main/install.
 ### ▶️ 基础用法
 
 ```bash
-ip-tidy AS209242                     # 单个 ASN
-ip-tidy AS209242,AS3214              # 多个 ASN（逗号分隔）
-ip-tidy 1.2.3.0/24                   # 单个 IPv4 CIDR
-ip-tidy 1.2.3.0/24,5.6.7.0/24      # 多个 IPv4 CIDR
-ip-tidy AS209242,1.2.3.0/24         # ASN + CIDR 混合输入
+ip AS209242                     # 单个 ASN
+ip AS209242,AS3214              # 多个 ASN（逗号分隔）
+ip 1.2.3.0/24                   # 单个 IPv4 CIDR
+ip 1.2.3.0/24,5.6.7.0/24      # 多个 IPv4 CIDR
+ip AS209242,1.2.3.0/24         # ASN + CIDR 混合输入
 ```
 
 ### ⚙️ 常用选项
@@ -73,10 +73,10 @@ ip-tidy AS209242,1.2.3.0/24         # ASN + CIDR 混合输入
 ### 🔧 管理与组合
 
 ```bash
-ip-tidy AS209242 -w -d -s            # 组合使用
-ip-tidy AS209242 --skip-masscan      # 断点续扫
-ip-tidy update                       # 更新到最新版
-ip-tidy uninstall                    # 卸载
+ip AS209242 -w -d -s            # 组合使用
+ip AS209242 --skip-masscan      # 断点续扫
+ip update                       # 更新到最新版
+ip uninstall                    # 卸载
 ```
 
 > 💡 **提示**：无参数运行自动进入交互模式，按提示输入即可。完成后自动启动 HTTP 下载服务。
@@ -89,12 +89,12 @@ ip-tidy uninstall                    # 卸载
 
 ```bash
 # 首次使用 — 下载离线数据库
-ip-tidy -g
+ip -g
 # 按提示访问 maxmind.com 免费注册获取 License Key
 # 数据库保存到 ~/.config/ip-tidy/
 
 # 日常运行自动优先使用离线库
-ip-tidy AS209242
+ip AS209242
 # 输出:
 #   [GeoIP] 离线数据库 (MaxMind GeoLite2)
 #   地区: Shanghai, CN  机构: Alibaba
@@ -109,7 +109,7 @@ ip-tidy AS209242
 大 CIDR（如 `/16`）自动拆分 `/24` 子网，每段抽样 3 个 IP 进行 TCP 443 探活，仅将活跃子网投入 masscan 扫描，大幅缩减无效扫描量。
 
 ```bash
-ip-tidy 10.0.0.0/16 --smart
+ip 10.0.0.0/16 --smart
 # /16 -> 256 个 /24 子段，每段抽 3 个 IP 探活
 # 仅活子网进入 masscan，过滤死段 xx%
 # 无存活时自动回退全量扫描
@@ -151,7 +151,7 @@ graph LR
 第一阶段正常扫描默认端口，第二阶段对 cf-scanner 命中的 IP 追加 55546 个宽端口扫描。
 
 ```bash
-ip-tidy AS209242 -d
+ip AS209242 -d
 # Phase 1: 默认端口扫描
 # Phase 2: 对命中 IP 追加宽端口扫描
 ```
@@ -165,7 +165,7 @@ ip-tidy AS209242 -d
 扫描完成后根据通过的节点 IP 自动提取 `/16` CIDR 网段，对扩展后的网段重新执行完整扫描管道，发现同网段内更多可用节点。
 
 ```bash
-ip-tidy AS209242
+ip AS209242
 # 完成 CF 检测后自动提示:
 #   [当前结果] 通过 5 个节点
 #   是否启用深度挖掘？（y/n, 回车跳过）:
