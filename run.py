@@ -483,6 +483,7 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
 
 
 def step_speed_test(cfg: ScannerConfig) -> None:
+    step_start = time.time()
     verified_file = BASE / "verified.txt"
     if not verified_file.exists() or verified_file.stat().st_size == 0:
         print("  无 IP，跳过")
@@ -528,6 +529,9 @@ def step_speed_test(cfg: ScannerConfig) -> None:
         for row, _ in results:
             f.write(row + "\n")
     write_progress_done(f" | 测速完成: {total} 个 IP")
+    elapsed = int(time.time() - step_start)
+    m, s = divmod(elapsed, 60)
+    print(c(f"  本步耗时: {m}分{s}秒" if m else f"  本步耗时: {s}秒", C.W))
 
 
 def _smart_wrapper(cfg: ScannerConfig) -> list[str]:
@@ -957,7 +961,11 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
         print("  " + "=" * 60)
         print("  Masscan 端口扫描")
         print("  " + "=" * 60)
+        ms_start = time.time()
         masscan_hits = run_masscan(cidr_file, cfg.scan_ports, masscan_rate, progress_callback=_cb)
+        ms_elapsed = int(time.time() - ms_start)
+        ms_m, ms_s = divmod(ms_elapsed, 60)
+        print(c(f"  本步耗时: {ms_m}分{ms_s}秒" if ms_m else f"  本步耗时: {ms_s}秒", C.W))
     else:
         print("  Masscan 不可用，直接从 CIDR 扩展 IP 进行 cf-scanner 扫描...")
         port_list = [p.strip() for p in cfg.scan_ports.split(",") if p.strip().isdigit()]
