@@ -64,12 +64,21 @@ def print_banner(cpu: int = 0, mem: str = "", rate: int = 0,
         ver = ""
     BW = 68
     line = "─" * BW
+    title = "LITTLE MONEY ASN NSD TOOL"
+    title_full = f"{title} {ver}" if ver else title
+    tl = len(title_full)
+    lp = (BW - tl) // 2
+    rp = BW - lp - tl
+    sub = "ASN → CIDR → Masscan → TLS → CF CSV"
+    sl = len(sub)
+    slp = (BW - sl) // 2
+    srp = BW - slp - sl
     print()
     print(c(f"┌{line}┐", C.B))
-    print(c(f"│{'':{BW}}│", C.B))
-    print(c(f"│  LITTLE MONEY ASN NSD TOOL{'':>{BW - 30 - len(ver)}}{ver}│", C.LC))
-    print(c(f"│  ASN → CIDR → Masscan → TLS → CF CSV{'':>{BW - 38}}│", C.W))
-    print(c(f"│{'':{BW}}│", C.B))
+    print(c(f"│{'':>{BW}}│", C.B))
+    print(c(f"│{'':>{lp}}{title_full}{'':>{rp}}│", C.LC))
+    print(c(f"│{'':>{slp}}{sub}{'':>{srp}}│", C.W))
+    print(c(f"│{'':>{BW}}│", C.B))
     print(c(f"└{line}┘", C.B))
 
 

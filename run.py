@@ -311,10 +311,9 @@ def _pipeline(cfg: ScannerConfig) -> tuple[int, int]:
     passed = max(0, passed)
 
     rate_pct = passed / hits * 100 if hits else 0
-    rate_color = C.G if rate_pct >= 50 else C.Y
     msg = f"  CF可用IP数量: {hits}  |  精筛通过率: {rate_pct:.0f}% ({passed}/{hits})"
-    print(c(msg, rate_color))
-    print(c(f"  本步耗时: {int(time.time() - step_start)}秒", C.W))
+    print(c(msg, C.W))
+    print(c(f"  本步耗时: {int(time.time() - step_start)}秒", C.GY))
     return hits, passed
 
 
