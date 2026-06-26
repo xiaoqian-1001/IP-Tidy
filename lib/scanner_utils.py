@@ -34,10 +34,10 @@ _RANDOM_ZONES: list[tuple[int, int, int]] = [
 ]
 
 _SPEED_TESTS = [
-    ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=1048576",   1,   "1MB"),
-    ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=10485760",  10,  "10MB"),
-    ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=100000000", 100, "100MB"),
-    ("cloudflare.cdn.openbsd.org", "https://cloudflare.cdn.openbsd.org/pub/OpenBSD/7.3/src.tar.gz", 0, "CDN"),
+    ("speed.cloudflare.com", "/__down?bytes=1048576",   1,   "1MB"),
+    ("speed.cloudflare.com", "/__down?bytes=10485760",  10,  "10MB"),
+    ("speed.cloudflare.com", "/__down?bytes=100000000", 100, "100MB"),
+    ("cloudflare.cdn.openbsd.org", "/pub/OpenBSD/7.3/src.tar.gz", 0, "CDN"),
 ]
 
 SUBNET_SPLIT = 24
@@ -381,34 +381,157 @@ def ssl_create_unverified():
     return ctx
 
 
-def cf_download(ip: str, port: str) -> float:
-    best = 0.0
-    for host, url, size_mb, _label in _SPEED_TESTS:
+# ── EWMA (Exponentially Weighted Moving Average) ──
+
+class _EWMA:
+    def __init__(self, alpha: float = 0.3):
+        self.alpha = alpha
+        self._value: Optional[float] = None
+
+    def add(self, sample: float) -> None:
+        if self._value is None:
+            self._value = sample
+        else:
+            self._value = self.alpha * sample + (1 - self.alpha) * self._value
+
+    @property
+    def value(self) -> float:
+        return self._value or 0.0
+
+
+# ── CDN 地区码提取（从 HTTP 响应头） ──
+
+def extract_colo_from_headers(headers_text: str) -> str:
+    for line in headers_text.splitlines():
+        low = line.lower().strip()
+        if low.startswith("cf-ray:"):
+            m = re.search(r"[A-Z]{3}", line)
+            if m:
+                return m.group()
+        if low.startswith("x-amz-cf-pop:"):
+            m = re.search(r"[A-Z]{3}", line)
+            if m:
+                return m.group()
+        if low.startswith("x-served-by:"):
+            codes = re.findall(r"[A-Z]{3}", line)
+            if codes:
+                return codes[-1]
+        if low.startswith("x-id-fe:"):
+            val = line.split(":", 1)[1].strip()
+            m = re.search(r"^[a-z]{2}", val)
+            if m:
+                return m.group().upper()
+        if low.startswith("server:"):
+            srv = line.split(":", 1)[1].strip()
+            if "BunnyCDN-" in srv:
+                code = srv.split("BunnyCDN-", 1)[1]
+                m = re.search(r"[A-Z]{2}", code)
+                if m:
+                    return m.group()
+        if low.startswith("x-77-pop:"):
+            m = re.search(r"[A-Z]{2}", line)
+            if m:
+                return m.group()
+    return ""
+
+
+def _connect_https_ip(ip: str, port: int, host: str,
+                      timeout: float) -> "http.client.HTTPSConnection":
+    import http.client
+    import ssl as _ssl
+    ctx = _ssl._create_unverified_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = _ssl.CERT_NONE
+    raw = socket.create_connection((ip, port), timeout=timeout)
+    ssock = ctx.wrap_socket(raw, server_hostname=host)
+    conn = http.client.HTTPSConnection(host, port, timeout=timeout)
+    conn.sock = ssock
+    return conn
+
+
+def _ewma_download_one(ip: str, port: int, host: str, path: str,
+                       timeout: float) -> tuple[float, str]:
+    import http.client
+    ua = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) "
+          "AppleWebKit/537.36 (KHTML, like Gecko) "
+          "Chrome/98.0.4758.80 Safari/537.36")
+    try:
+        conn = _connect_https_ip(ip, port, host, min(timeout, 10))
+        conn.request("GET", path, headers={
+            "Host": host,
+            "User-Agent": ua,
+            "Accept": "*/*",
+            "Connection": "close",
+        })
+        resp = conn.getresponse()
+    except Exception:
+        return 0.0, ""
+    status = resp.status
+    if status != 200:
+        resp.read()
+        conn.close()
+        return 0.0, ""
+    colo = extract_colo_from_headers(str(resp.headers) or "")
+    time_slices = 50
+    slice_dur = timeout / time_slices
+    alpha = 2.0 / (time_slices + 1)
+    ewma = _EWMA(alpha)
+    content_read = 0
+    last_read = 0
+    time_start = time.time()
+    next_time = time_start + slice_dur
+    time_end = time_start + timeout
+    while True:
+        now = time.time()
+        if now >= next_time:
+            ewma.add(content_read - last_read)
+            last_read = content_read
+            next_time = time_start + slice_dur * (
+                int((now - time_start) / slice_dur) + 1)
+        if now >= time_end:
+            break
         try:
-            timeout = 15 if size_mb < 10 else 30
-            r = subprocess.run([
-                "curl", "--resolve", f"{host}:443:{ip}",
-                "--connect-to", f"{host}:443:{ip}:{port}",
-                "-o", "/dev/null", "-s", "-w", "%{speed_download}",
-                "--connect-timeout", "5", "--max-time", str(timeout),
-                url,
-            ], capture_output=True, text=True, timeout=timeout + 5)
-            mbps = round(float(r.stdout.strip() or 0) * 8 / 1_000_000, 2)
-            if mbps > best:
-                best = mbps
-        except (ValueError, subprocess.TimeoutExpired, OSError):
-            continue
-    return best
+            chunk = resp.read(65536)
+            if not chunk:
+                break
+            content_read += len(chunk)
+        except Exception:
+            break
+    resp.read()
+    conn.close()
+    if ewma.value <= 0:
+        return 0.0, colo
+    speed_bps = ewma.value / (timeout / 120)
+    speed_mbps = speed_bps * 8 / 1_000_000
+    return speed_mbps, colo
+
+
+def cf_download(ip: str, port: str) -> tuple[float, str]:
+    best = 0.0
+    colo = ""
+    for host, path, size_mb, _label in _SPEED_TESTS:
+        timeout = 10 if size_mb < 10 else 20 if size_mb < 100 else 30
+        spd, c = _ewma_download_one(ip, int(port), host, path, timeout)
+        if spd > best:
+            best = spd
+        if c and not colo:
+            colo = c
+    return best, colo
 
 
 def test_one(parts: list[str]) -> tuple[str, int, float]:
     ip, port = parts[0], parts[1]
     lat = tcp_latency(ip, int(port))
-    spd = cf_download(ip, port) if lat > 0 else 0.0
+    spd = 0.0
+    colo_from_dl = ""
+    if lat > 0:
+        spd, colo_from_dl = cf_download(ip, port)
     hlat = http_latency(ip, int(port)) if lat > 0 else 0
     result = parts[:]
     result[6] = str(lat)
     result[7] = str(round(spd, 2))
+    if colo_from_dl and not result[3].strip():
+        result[3] = colo_from_dl
     return ",".join(result), lat, spd
 
 
