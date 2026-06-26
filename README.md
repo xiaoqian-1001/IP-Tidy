@@ -1,6 +1,6 @@
 <p align="center">
   <br>
-  <img src="https://img.shields.io/badge/version-2.2.1-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-2.2.2-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/python-3.8+-green?style=flat-square" alt="python">
   <img src="https://img.shields.io/badge/platform-linux%20|%20macOS%20|%20WSL2-lightgrey?style=flat-square" alt="platform">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="license">
@@ -290,6 +290,17 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 ---
 
 ## 📝 更新日志
+
+### 🔖 v2.2.2
+
+- 🏷️ 快捷命令由 `xiaoqian` 改为 `qian`
+- 🎨 颜色体系重构：10色语义化分层（粗红错误、粗黄警告、粗青标题、灰色次要、细蓝分隔）
+- 🖼️ Banner 改为 Unicode 盒子框 `┌─┐│└─┘`，标题居中
+- ⏱️ 下载服务改为 Ctrl+C 退出，修复 `input()` 在非交互终端提前退出
+- 🖍️ 下载链接改用粗品红 `C.LM` 高亮
+- 🐛 修复 `install.sh` 仓库路径 `ASNIPtest` → `IP-Tidy`
+- 🐛 修复 help 示例 `ip-tidy` → `qian`
+- 🐛 修复漏改的 `CF可用IP数量` 白色加粗和 `本步耗时` 灰色细体
 
 ### 🔖 v2.2.1
 
