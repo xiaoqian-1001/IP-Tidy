@@ -61,7 +61,7 @@ def print_banner(cpu: int = 0, mem: str = "", rate: int = 0,
     print()
     print(c(sep, C.LB))
     tag = f"  {ver}" if ver else ""
-    print(c(f"  xiaoqian ASN NSD TOOL{tag}", C.LG))
+    print(c(f"  LITTLE MONEY ASN NSD TOOL{tag}", C.LG))
     print(c("  ASN -> CIDR -> Masscan -> CF -> CSV", C.W))
     print(c(sep, C.LB))
 

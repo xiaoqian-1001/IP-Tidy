@@ -712,7 +712,7 @@ def main() -> None:
         total_steps += 1
 
     steps: list[tuple[str, Callable[[], object]]] = [
-        ("Step 1  ASN -> CIDR", lambda: step_fetch_prefixes(cfg, asns, v4_cidrs)),
+        ("Step 1  通过 ASN 提取 CIDR 网段", lambda: step_fetch_prefixes(cfg, asns, v4_cidrs)),
     ]
     step_num = 1
     if a.smart:
@@ -723,17 +723,17 @@ def main() -> None:
         print(c("  (跳过 Masscan, 使用已有结果)", C.W))
     else:
         step_num += 1
-        steps.append((f"Step {step_num}  Masscan 端口扫描", lambda: step_masscan(cfg)))
+        steps.append((f"Step {step_num}  基于 Masscan 执行端口扫描任务", lambda: step_masscan(cfg)))
     step_num += 1
-    steps.append((f"Step {step_num}  CF 检测 + API 精筛", lambda: _pipeline(cfg)))
+    steps.append((f"Step {step_num}  Cloudflare IP 检测与 API 精准过滤", lambda: _pipeline(cfg)))
     step_num += 1
-    steps.append((f"Step {step_num}  深度挖掘", lambda: step_deep_mine(cfg)))
+    steps.append((f"Step {step_num}  IP 深度挖掘探测", lambda: step_deep_mine(cfg)))
     if do_deep:
         step_num += 1
         steps.append((f"Step {step_num}  深度宽端口扫描", lambda: step_deep_scan(cfg)))
     if do_speed:
         step_num += 1
-        steps.append((f"Step {step_num}  延迟 + 带宽测速", lambda: step_speed_test(cfg)))
+        steps.append((f"Step {step_num}  网络延迟/带宽速率检测", lambda: step_speed_test(cfg)))
 
     for stale in ("cidrs.txt", "cidrs_v4.txt",
                   "masscan_result.xml", "cf_hits.txt", "verified.txt"):
@@ -790,7 +790,7 @@ def main() -> None:
                 print(c(f"  存活子网: {len(v4_list)} 段 (v4)", C.G))
             elif label.startswith("Step 2") or ("Masscan" in label and "端口" in label):
                 total_open = result
-            elif label.startswith("Step 3") or ("CF 检测" in label):
+            elif label.startswith("Step 3") or ("Cloudflare" in label):
                 cf_nodes, passed_count = result
             elif "深度挖掘" in label:
                 added = result
@@ -959,7 +959,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
     if os.path.exists("/usr/local/bin/masscan") or os.system("which masscan >/dev/null 2>&1") == 0:
         masscan_rate = probe_masscan_rate(quiet=True)
         print("  " + "=" * 60)
-        print("  Masscan 端口扫描")
+        print("  基于 Masscan 执行端口扫描任务")
         print("  " + "=" * 60)
         ms_start = time.time()
         masscan_hits = run_masscan(cidr_file, cfg.scan_ports, masscan_rate, progress_callback=_cb)
@@ -986,7 +986,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
 
     adj_cf = adjust_concurrency(cfg.cf_concurrency, cfg.cpu)
     print("  " + "=" * 60)
-    print("  CF 检测 + API 精筛")
+    print("  Cloudflare IP 检测与 API 精准过滤")
     print("  " + "=" * 60)
     hit_count = run_cf_scanner(cf_in, cf_out, adj_cf, progress_callback=_cb)
 

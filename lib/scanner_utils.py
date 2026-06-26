@@ -275,7 +275,7 @@ def probe_masscan_rate(quiet: bool = False) -> int:
         cores = os.cpu_count() or 1
         return max(1000, min(cores * 1000, 16000))
     if not quiet:
-        print("  探测 masscan 最佳速率...", end="", flush=True)
+        print("  探测 Masscan 最优扫描速率：", end="", flush=True)
     sample_cidrs = ["1.1.1.0/24", "8.8.8.0/24", "9.9.9.0/24"]
     tmp_cidr = "/tmp/.masscan_rate_test"
     tx_path = f"/sys/class/net/{iface}/statistics/tx_packets"
@@ -330,7 +330,7 @@ def probe_masscan_rate(quiet: bool = False) -> int:
         except OSError:
             pass
     if not quiet:
-        print(f" {best_rate} pps")
+        print(f"{best_rate} pps")
     return best_rate
 
 
