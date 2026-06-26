@@ -43,6 +43,7 @@ class C:
     LC = "\033[1;36m"    # bold cyan ─ step / title
     CY = "\033[36m"      # cyan (细) ─ info
     GY = "\033[90m"      # grey (细) ─ minor info
+    LM = "\033[1;35m"    # bold magenta ─ highlight / links
 
 
 def c(text: str, color: str) -> str:

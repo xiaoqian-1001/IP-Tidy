@@ -1057,10 +1057,10 @@ def _serve_download(file_path: Path) -> None:
     try:
         print_sep("─", C.B)
         print(c("  下载服务已启动 (按回车关闭)", C.LG))
-        print(c(f"  http://{lan_ip}:{port}/{file_path.name}", C.W))
+        print(c(f"  http://{lan_ip}:{port}/{file_path.name}", C.LM))
         pub = get_public_ip()
         if pub not in ("127.0.0.1", lan_ip):
-            print(c(f"  http://{pub}:{port}/{file_path.name}", C.W))
+            print(c(f"  http://{pub}:{port}/{file_path.name}", C.LM))
         print()
         server = subprocess.Popen(
             [sys.executable, "-m", "http.server", str(port),
