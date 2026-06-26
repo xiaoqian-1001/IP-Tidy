@@ -944,7 +944,8 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             msg = str(data)
             if msg.startswith("API 验证") or "Masscan 批次" in msg:
                 return
-            sys.stderr.write("\n\r")
+            # Clear residual chars on progress bar line before printing log
+            sys.stderr.write("\r\033[K\n")
             sys.stderr.flush()
             print(f"  {msg}")
         elif typ == "error":
