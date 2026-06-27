@@ -311,6 +311,9 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 - 🐛 修复 help 示例 `ip-tidy` → `qian`
 - 🐛 修复漏改的 `CF可用IP数量` 白色加粗和 `本步耗时` 灰色细体
 
+<details>
+<summary>📜 更早版本</summary>
+
 ### 🔖 v2.2.1
 
 - 🏷️ 脚本标题更新为 `LITTLE MONEY ASN NSD TOOL`
@@ -335,9 +338,6 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 - ⏱️ HTTP 延迟：新增 HTTP HEAD 请求延迟测量（TCP + HTTP 双协议）
 - 📊 CSV 增强：输出含 IP位置 / ASN组织列，GeoIP 自动填充
 - 🗑️ 移除 WEB 模式及相关代码（Flask 前端）
-
-<details>
-<summary>📜 更早版本</summary>
 
 ### 🔖 v2.1.0
 
