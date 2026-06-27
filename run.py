@@ -627,6 +627,8 @@ def main() -> None:
         cfg.masscan_rate = max(100, a.rate)
         print(f"  发包速率: {cfg.masscan_rate} pps (手动)")
 
+    probe_added = False
+
     if a.ports:
         cfg.scan_ports = parse_ports(a.ports)
         if not cfg.scan_ports:
@@ -670,23 +672,25 @@ def main() -> None:
                 extra = random_probe_ports(n, cfg.scan_ports)
                 if extra:
                     cfg.scan_ports = cfg.scan_ports + "," + extra
+                    probe_added = True
                     print(f"  默认端口 +{n} 端口 -> 共 {port_count(cfg.scan_ports)} 端口 ({extra})")
     else:
         cp = _parse_custom_port(sys.argv[1:])
         if cp:
             cfg.scan_ports = cp
 
-    port_desc = f"端口 ({port_count(cfg.scan_ports)} 个)"
-    print(c(f"  [已确认] 端口模式: {port_desc}", C.LG))
-
     if a.probe_ports:
         n = max(1, min(a.probe_ports, 100))
         extra = random_probe_ports(n, cfg.scan_ports)
         if extra:
             cfg.scan_ports = cfg.scan_ports + "," + extra
+            probe_added = True
             print(c(f"  随机探口: +{n} 个端口 -> 共 {port_count(cfg.scan_ports)} 端口 ({extra})", C.CY))
         else:
             print(c(f"  随机探口: 无新端口可追加", C.Y))
+
+    port_desc = f"默认端口+随机端口组合模式 ({port_count(cfg.scan_ports)} 个)" if probe_added else f"端口 ({port_count(cfg.scan_ports)} 个)"
+    print(c(f"  [已确认] 端口模式: {port_desc}", C.LG))
 
     if not a.smart and v4_cidrs:
         has_large = any(
