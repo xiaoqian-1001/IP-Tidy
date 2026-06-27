@@ -736,7 +736,7 @@ def main() -> None:
         has_state = (INCR_DIR / f"{incr_tag_hint}_cidrs.txt").exists()
         if has_state:
             try:
-                ch = input(c("  增量扫描？(仅扫描新增CIDR, y/n, 回车跳过): ", C.Y)).strip().lower()
+                ch = input(c("  是否开启增量扫描模式？仅对新增CIDR网段执行探测 (y/n, 回车跳过): ", C.Y)).strip().lower()
                 a.incremental = ch == "y"
                 if a.incremental:
                     print(c("  [已确认] 增量扫描 (对比上次CIDR，仅扫新增)", C.G))
