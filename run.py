@@ -577,7 +577,7 @@ def main() -> None:
     parser.add_argument("-w", "--wide", action="store_true",
                         help="宽端口模式")
     parser.add_argument("-R", "--random", action="store_true",
-                        help="随机 5 端口快速探测")
+                        help="随机 5 端口探测 (全端口范围)")
     parser.add_argument("-P", "--probe-ports", metavar="N", type=int,
                         help="在常规端口基础上追加 N 个随机端口探活 (全端口范围，排除已选)")
     parser.add_argument("-r", "--rate", metavar="PPS", type=int,

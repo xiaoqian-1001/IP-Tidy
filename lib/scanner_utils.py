@@ -24,15 +24,6 @@ WIDE_PORTS = "912,22,80,443,8080,8443,2053,2083,2087,2096,10000-65535"
 MASSCAN_BIN = "/usr/local/bin/masscan"
 _MASSCAN_BATCH = 5000
 
-_RANDOM_ZONES: list[tuple[int, int, int]] = [
-    (22, 22, 2), (80, 80, 2), (443, 443, 2),
-    (912, 912, 2), (2053, 2053, 2),
-    (2083, 2087, 2), (8080, 8080, 2), (8443, 8443, 2),
-    (10000, 19999, 2),
-    (20000, 60000, 10),
-    (60001, 65535, 3),
-]
-
 _SPEED_TESTS = [
     ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=1048576",   1,   "1MB"),
     ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=10485760",  10,  "10MB"),
@@ -100,14 +91,11 @@ def sample_ips(subnet: str, n: int) -> list[str]:
 
 
 def random_ports(n: int = 5) -> str:
-    zones = [z[:2] for z in _RANDOM_ZONES]
-    weights = [z[2] for z in _RANDOM_ZONES]
     seen: set[int] = set()
     result: list[str] = []
     attempts = 0
     while len(result) < n and attempts < n * 20:
-        start, end = random.choices(zones, weights=weights, k=1)[0]
-        port = random.randint(start, end)
+        port = random.randint(1, 65535)
         if port not in seen:
             seen.add(port)
             result.append(str(port))
