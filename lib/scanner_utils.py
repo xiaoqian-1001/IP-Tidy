@@ -600,3 +600,39 @@ def parse_targets(raw_args: list[str]) -> tuple[list[str], list[str], list[str]]
             if asn.isdigit():
                 asns.append(asn)
     return asns, v4_cidrs
+
+
+INCR_DIR = BASE / ".ip-tidy-state"
+
+
+def _incr_tag(asns: list[str], v4_cidrs: list[str]) -> str:
+    if asns:
+        return "asn_" + "_".join(sorted(asns))
+    cidr_key = "cidr_" + "_".join(re.sub(r"[./]", "_", c) for c in sorted(v4_cidrs))
+    return cidr_key[:64]
+
+
+def load_incremental_state(tag: str) -> tuple[list[str], list[str]]:
+    cidr_file = INCR_DIR / f"{tag}_cidrs.txt"
+    results_file = INCR_DIR / f"{tag}_results.csv"
+    saved_cidrs: list[str] = []
+    saved_results: list[str] = []
+    if cidr_file.exists():
+        saved_cidrs = [l.strip() for l in cidr_file.read_text().splitlines() if l.strip()]
+    if results_file.exists():
+        saved_results = [l.rstrip("\n") for l in results_file.read_text().splitlines()]
+    return saved_cidrs, saved_results
+
+
+def save_incremental_state(tag: str, cidrs: list[str], results: list[str]) -> None:
+    INCR_DIR.mkdir(parents=True, exist_ok=True)
+    (INCR_DIR / f"{tag}_cidrs.txt").write_text("\n".join(cidrs) + "\n")
+    (INCR_DIR / f"{tag}_results.csv").write_text("\n".join(results) + "\n")
+
+
+def compute_cidr_diff(current: list[str], saved: list[str]) -> tuple[list[str], list[str]]:
+    cur_set = set(current)
+    sav_set = set(saved)
+    new_cidrs = sorted(cur_set - sav_set)
+    removed_cidrs = sorted(sav_set - cur_set)
+    return new_cidrs, removed_cidrs

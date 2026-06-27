@@ -41,6 +41,7 @@ from lib.scanner_utils import (
     split_port_batches, adjust_concurrency, random_ports, random_probe_ports,
     WIDE_PORTS, cidr_count,
     CF_SCANNER, VERIFY_PY, API_URL, _MASSCAN_BATCH,
+    load_incremental_state, save_incremental_state, compute_cidr_diff, _incr_tag, INCR_DIR,
 )
 from lib.scanner_pipeline import (
     BASE, resolve_asn_cidrs, run_masscan, run_cf_scanner, verify_batch,
@@ -592,6 +593,8 @@ def main() -> None:
                         help="下载/更新 MaxMind GeoLite2 离线数据库")
     parser.add_argument("--smart", action="store_true",
                         help="智能子网分级: 大 CIDR 拆 /24 抽样探活, 仅扫活跃子网")
+    parser.add_argument("-i", "--incremental", action="store_true",
+                        help="增量扫描: 仅扫描上次保存后新增的 CIDR 段")
     a = parser.parse_args()
 
     if a.geo_update:
@@ -800,7 +803,15 @@ def main() -> None:
     passed_count = 0
     deep_mine_count = 0
 
+    incr_tag = ""
+    incr_saved_results: list[str] = []
+    incr_full_cidrs: list[str] = []
+    incr_skip = False
+
     for label, fn in steps:
+        if incr_skip:
+            (BASE / "verified.txt").write_text("\n".join(incr_saved_results) + "\n")
+            break
         print_step(label)
         try:
             result = fn()
@@ -808,6 +819,23 @@ def main() -> None:
                 v4_list = result
                 cidr_count_val = len(v4_list)
                 v4_cidr_count = len(v4_list)
+
+                if a.incremental:
+                    incr_tag = _incr_tag(asns, v4_cidrs)
+                    saved_cidrs, incr_saved_results = load_incremental_state(incr_tag)
+                    new_cidrs, removed = compute_cidr_diff(v4_list, saved_cidrs)
+                    print(c(f"  [增量] 历史 {len(saved_cidrs)} 段, 新增 {len(new_cidrs)} 段, 移除 {len(removed)} 段", C.CY))
+                    if not new_cidrs and incr_saved_results:
+                        print(c("  无新增 CIDR，跳过扫描，使用上次结果", C.G))
+                        (BASE / "cidrs_v4.txt").write_text("")
+                        incr_skip = True
+                    elif new_cidrs:
+                        incr_full_cidrs = list(v4_list)
+                        (BASE / "cidrs_v4.txt").write_text("\n".join(new_cidrs) + "\n")
+                        cidr_count_val = len(new_cidrs)
+                        print(c(f"  仅扫描新增 {len(new_cidrs)} 段 CIDR", C.CY))
+                    else:
+                        incr_full_cidrs = list(v4_list)
             elif "子网分级" in label:
                 v4_list = result
                 cidr_count_val = len(v4_list)
@@ -872,6 +900,45 @@ def main() -> None:
                 f.write(f"{ip},{port},TRUE,{colo},{country},{city},{latency},{spd},{asn},{proto}\n")
 
         print(c(f"  结果: {len(parsed)} 条 -> {csv_path.name}", C.G))
+
+        if a.incremental and incr_tag and incr_saved_results:
+            merged: dict[str, str] = {}
+            for line in incr_saved_results:
+                if not line or line.startswith("#") or line.startswith("IP"):
+                    continue
+                parts = line.split(",", 2)
+                key = f"{parts[0]}:{parts[1]}" if len(parts) >= 2 else line
+                merged[key] = line
+            new_count = 0
+            for line in parsed:
+                parts = line.split(",", 2)
+                key = f"{parts[0]}:{parts[1]}" if len(parts) >= 2 else line
+                if key not in merged:
+                    new_count += 1
+                merged[key] = line
+            merged_lines = sorted(merged.values())
+            with open(csv_path, "w") as f:
+                f.write("IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN,协议\n")
+                for p in merged_lines:
+                    parts = p.split(",")
+                    ip = parts[0]
+                    port = parts[1]
+                    colo = parts[3] if len(parts) > 3 else ""
+                    country = parts[4] if len(parts) > 4 else ""
+                    city = parts[5] if len(parts) > 5 else ""
+                    latency = parts[6] if len(parts) > 6 else ""
+                    asn_val = parts[8] if len(parts) > 8 else ""
+                    proto = "IPv4"
+                    spd = parts[7] if len(parts) > 7 else ""
+                    f.write(f"{ip},{port},TRUE,{colo},{country},{city},{latency},{spd},{asn_val},{proto}\n")
+            print(c(f"  合并: {len(incr_saved_results) - 1} 历史 + {new_count} 新增 -> {len(merged)} 条", C.CY))
+            passed_count = len(merged)
+            save_incremental_state(incr_tag, incr_full_cidrs or v4_list, merged_lines)
+        elif a.incremental and incr_tag:
+            if incr_full_cidrs:
+                save_incremental_state(incr_tag, incr_full_cidrs, parsed)
+            else:
+                save_incremental_state(incr_tag, v4_list, parsed)
 
     print_result_header(
         len(asns),
