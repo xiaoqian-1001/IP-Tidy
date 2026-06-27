@@ -1,6 +1,6 @@
 <p align="center">
   <br>
-  <img src="https://img.shields.io/badge/version-2.2.2-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-2.2.3-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/python-3.8+-green?style=flat-square" alt="python">
   <img src="https://img.shields.io/badge/platform-linux%20|%20macOS%20|%20WSL2-lightgrey?style=flat-square" alt="platform">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="license">
@@ -30,7 +30,7 @@
 | ⚡ 硬件自适应 | 实测网卡上限，CPU / 内存动态调参 |
 | 🔄 断点续扫 | `--skip-masscan` 跳过扫描，复用已有结果 |
 | 📦 端口拆分 | 超大端口范围自动拆批，扫描进度平滑 |
-| 🎛️ 端口模式 | 默认 / 宽端口 / 随机 / 自定义 四种选择 |
+| 🎛️ 端口模式 | 默认 / 宽端口 / 随机 / 探口追加 / 自定义 |
 | 💾 ASN 缓存 | RIPEStat 结果 7 天缓存，失败自动回退 |
 | ⏱️ HTTP 延迟 | TCP + HTTP 双协议延迟测量 |
 | 📊 CSV 增强 | IP位置 + ASN组织 + GeoIP 信息自动填充 |
@@ -62,7 +62,8 @@ qian AS209242,1.2.3.0/24         # ASN + CIDR 混合输入
 ```bash
 -p 443,8443    # 自定义端口
 -w             # 宽端口模式 (55546 端口)
--R             # 随机 5 端口快速探测
+-R             # 随机 5 端口探测 (全端口范围)
+-P 10          # 在常规端口上追加 N 个随机端口探活
 -d             # 深度扫描 (命中 IP 追加宽端口)
 -s             # 扫描后自动测速
 -r 4000        # 指定发包速率
@@ -290,6 +291,13 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 ---
 
 ## 📝 更新日志
+
+### 🔖 v2.2.3
+
+- 🎲 新增 `-P N` / `--probe-ports`：在常规端口基础上追加 N 个随机端口探活，捕获非常规高端口反代 IP
+- 🎲 `-R` 随机端口从加权区间改为全端口范围 (1-65535) 纯随机
+- 🖥️ 交互模式支持选默认端口后追加随机端口探活
+- 🏷️ 端口模式显示优化：随机探口时显示 "默认端口+随机端口组合模式"
 
 ### 🔖 v2.2.2
 
