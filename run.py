@@ -683,8 +683,10 @@ def main() -> None:
     if asns:
         targets_desc.append(", ".join(f"AS{x}" for x in asns))
     if v4_cidrs:
-        targets_desc.append(f"IPv4 x{len(v4_cidrs)} ({', '.join(v4_cidrs[:3])}{'...' if len(v4_cidrs) > 3 else ''})")
-    print(c(f"  [已确认] 目标: {'; '.join(targets_desc)}", C.G))
+        targets_desc.append(
+            f"IPv4 ({len(v4_cidrs)} 条) {', '.join(v4_cidrs[:3])}"
+            f"{'...' if len(v4_cidrs) > 3 else ''}")
+    print(c(f"  [验证通过] 目标 CIDR：{'  '.join(targets_desc)}", C.G))
 
     if a.rate:
         cfg.masscan_rate = max(100, a.rate)
