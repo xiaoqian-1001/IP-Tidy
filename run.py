@@ -709,10 +709,10 @@ def main() -> None:
         cfg.scan_ports = random_ports()
         print(f"  随机端口: {cfg.scan_ports}")
     elif not sys.argv[1:] and not a.targets:
-        print(f"  默认端口: {cfg.scan_ports}")
-        print(f"  宽端口: {WIDE_PORTS}")
+        print(f"  默认端口：{cfg.scan_ports}")
+        print(f"  宽端口池：{WIDE_PORTS}")
         try:
-            inp = input(c("  端口模式 (回车=默认 / w=宽端口 / r=随机5 / 自定义): ", C.Y)).strip().lower()
+            inp = input(c("  端口模式（回车=默认端口 | w=宽端口 | r=随机5个端口 | 直接输入=自定义端口）：", C.Y)).strip().lower()
         except (EOFError, KeyboardInterrupt):
             inp = ""
         if inp == "w":
