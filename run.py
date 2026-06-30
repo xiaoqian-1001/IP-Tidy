@@ -1088,7 +1088,12 @@ def _run_cfst_speedtest(verified_file: Path, a, tag: str) -> None:
     if cfst_header:
         print(c(f"  {cfst_header}", C.W))
     for i, rl in enumerate(result_lines):
-        color = C.G if i == 0 else (C.GY if i < 3 else C.W)
+        if i == 0:
+            color = C.LG
+        elif i < 3:
+            color = C.LY
+        else:
+            color = C.W
         print(c(f"  {rl}", color))
 
     if result_file.exists() and result_file.stat().st_size > 0:
