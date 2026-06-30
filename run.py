@@ -856,7 +856,7 @@ def _generate_csv(verified_file: Path, asns: list[str], a,
 
 CFST_DIR = Path.home() / ".config" / "ip-tidy"
 CFST_BIN = CFST_DIR / "cfst"
-CFST_RESULT_LIMIT = 15
+CFST_DEFAULT_LIMIT = 15
 
 
 def _ensure_cfst_binary() -> Path:
@@ -956,6 +956,8 @@ def _run_cfst_speedtest(verified_file: Path, a, tag: str) -> None:
     if not ips:
         return
 
+    cfst_limit = getattr(a, "cfst_count", None) or CFST_DEFAULT_LIMIT
+
     if not a.cfst:
         try:
             ch = input(c(f"  是否进行 CloudflareSpeedTest 测速优选？({len(ips)} 个IP, y/n, 回车跳过): ", C.Y)).strip().lower()
@@ -964,8 +966,16 @@ def _run_cfst_speedtest(verified_file: Path, a, tag: str) -> None:
         if ch != "y":
             print(c("  [已跳过] CloudflareSpeedTest 测速", C.LG))
             return
+        try:
+            cnt = input(c(f"  取前多少条最优 IP？(默认 {CFST_DEFAULT_LIMIT}): ", C.Y)).strip()
+            if cnt.isdigit() and int(cnt) > 0:
+                cfst_limit = int(cnt)
+            elif cnt:
+                print(c(f"  无效输入，使用默认: {CFST_DEFAULT_LIMIT}", C.LY))
+        except (EOFError, KeyboardInterrupt):
+            pass
     else:
-        print(c(f"  [CFST] CloudflareSpeedTest 测速 ({len(ips)} 个IP)", C.G))
+        print(c(f"  [CFST] CloudflareSpeedTest 测速 ({len(ips)} 个IP, 取前 {cfst_limit} 条)", C.G))
 
     try:
         cfst_bin = _ensure_cfst_binary()
@@ -978,13 +988,13 @@ def _run_cfst_speedtest(verified_file: Path, a, tag: str) -> None:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     result_file = BASE / f"cfst_{tag}_{ts}.csv"
 
-    print(c(f"  [CFST] 开始测速，目标取前 {CFST_RESULT_LIMIT} 条最优 IP...", C.W))
+    print(c(f"  [CFST] 开始测速，目标取前 {cfst_limit} 条最优 IP...", C.W))
 
     import fcntl as _fcntl
 
     proc = subprocess.Popen(
         [str(cfst_bin), "-f", str(ip_file),
-         "-dn", str(CFST_RESULT_LIMIT), "-p", str(CFST_RESULT_LIMIT),
+         "-dn", str(cfst_limit), "-p", str(cfst_limit),
          "-o", str(result_file)],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -1002,7 +1012,7 @@ def _run_cfst_speedtest(verified_file: Path, a, tag: str) -> None:
     _phase = "delay"
     _current = 0
     _delay_total = 1
-    _download_total = CFST_RESULT_LIMIT
+    _download_total = cfst_limit
 
     while True:
         if proc.poll() is not None:
@@ -1124,6 +1134,8 @@ def main() -> None:
                         help="增量扫描: 仅扫描上次保存后新增的 CIDR 段")
     parser.add_argument("-c", "--cfst", action="store_true",
                         help="自动运行 CloudflareSpeedTest 对结果 IP 测速优选")
+    parser.add_argument("--cfst-count", metavar="N", type=int, default=CFST_DEFAULT_LIMIT,
+                        help=f"cfst 取前 N 条最优 IP (默认 {CFST_DEFAULT_LIMIT})")
     a = parser.parse_args()
 
     if a.geo_update:
