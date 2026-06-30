@@ -895,6 +895,50 @@ def _ensure_cfst_binary() -> Path:
             os.unlink(_tmp_path)
 
 
+def _parse_cfst_buffer(_buffer: bytes, _all_lines: list[str],
+                        _phase: str, _current: int,
+                        _delay_total: int, _download_total: int):
+    while b"\r" in _buffer or b"\n" in _buffer:
+        _idx_r = _buffer.find(b"\r")
+        _idx_n = _buffer.find(b"\n")
+        if _idx_r == -1:
+            _idx_r = len(_buffer)
+        if _idx_n == -1:
+            _idx_n = len(_buffer)
+        _split_idx = min(_idx_r, _idx_n)
+
+        _line_bytes = _buffer[:_split_idx]
+        _buffer = _buffer[_split_idx + 1:]
+
+        _line = _line_bytes.decode("utf-8", errors="replace").strip()
+        if not _line:
+            continue
+        _all_lines.append(_line)
+
+        if "下载测速" in _line:
+            _phase = "download"
+            _current = 0
+
+        _m = re.search(r"(\d+)\s*/\s*(\d+)", _line)
+        if _m:
+            _current = int(_m.group(1))
+            _detected = int(_m.group(2))
+            if _phase == "delay":
+                _delay_total = _detected
+            else:
+                _download_total = _detected
+
+    return _buffer, _phase, _current, _delay_total, _download_total
+
+
+def _compute_cfst_progress(_phase: str, _current: int,
+                           _delay_total: int, _download_total: int) -> float:
+    if _phase == "delay":
+        return min(_current / max(_delay_total, 1) * 20, 20)
+    else:
+        return 20 + min(_current / max(_download_total, 1) * 80, 80)
+
+
 def _run_cfst_speedtest(verified_file: Path, a, tag: str) -> None:
     if not (verified_file.exists() and verified_file.stat().st_size > 0):
         return
@@ -935,27 +979,80 @@ def _run_cfst_speedtest(verified_file: Path, a, tag: str) -> None:
     result_file = BASE / f"cfst_{tag}_{ts}.csv"
 
     print(c(f"  [CFST] 开始测速，目标取前 {CFST_RESULT_LIMIT} 条最优 IP...", C.W))
-    try:
-        proc = subprocess.run(
-            [str(cfst_bin), "-f", str(ip_file),
-             "-dn", str(CFST_RESULT_LIMIT), "-p", str(CFST_RESULT_LIMIT),
-             "-o", str(result_file)],
-            capture_output=True, text=True, timeout=600,
-            cwd=str(BASE)
-        )
-    except subprocess.TimeoutExpired:
-        print(c("  [FAIL] cfst 执行超时 (10分钟)", C.LR))
-        ip_file.unlink(missing_ok=True)
-        return
-    except FileNotFoundError:
-        print(c(f"  [FAIL] cfst 二进制不可用: {cfst_bin}", C.LR))
-        ip_file.unlink(missing_ok=True)
-        return
-    finally:
-        ip_file.unlink(missing_ok=True)
 
-    output = proc.stdout
-    stderr_output = proc.stderr
+    import fcntl as _fcntl
+
+    proc = subprocess.Popen(
+        [str(cfst_bin), "-f", str(ip_file),
+         "-dn", str(CFST_RESULT_LIMIT), "-p", str(CFST_RESULT_LIMIT),
+         "-o", str(result_file)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=0,
+        cwd=str(BASE)
+    )
+
+    fd = proc.stdout.fileno()
+    _fl = _fcntl.fcntl(fd, _fcntl.F_GETFL)
+    _fcntl.fcntl(fd, _fcntl.F_SETFL, _fl | os.O_NONBLOCK)
+
+    _buffer = b""
+    _all_lines: list[str] = []
+    _start_time = time.time()
+    _phase = "delay"
+    _current = 0
+    _delay_total = 1
+    _download_total = CFST_RESULT_LIMIT
+
+    while True:
+        if proc.poll() is not None:
+            try:
+                while True:
+                    _chunk = os.read(fd, 65536)
+                    if not _chunk:
+                        break
+                    _buffer += _chunk
+            except (BlockingIOError, OSError):
+                pass
+            break
+
+        try:
+            _chunk = os.read(fd, 65536)
+            if _chunk:
+                _buffer += _chunk
+        except (BlockingIOError, OSError):
+            pass
+
+        _buffer, _phase, _current, _delay_total, _download_total = _parse_cfst_buffer(
+            _buffer, _all_lines, _phase, _current, _delay_total, _download_total
+        )
+
+        _elapsed = time.time() - _start_time
+        _pct = _compute_cfst_progress(_phase, _current, _delay_total, _download_total)
+        if _pct > 1:
+            _eta = _elapsed / _pct * (100 - _pct)
+            _eta_s = f" | ETA {int(_eta // 60)}分{int(_eta % 60)}秒"
+        else:
+            _eta_s = ""
+        _phase_label = "延迟测速" if _phase == "delay" else "下载测速"
+        write_progress(_pct, f" | CFST {_phase_label}{_eta_s}")
+        time.sleep(0.15)
+
+    _buffer, _phase, _current, _delay_total, _download_total = _parse_cfst_buffer(
+        _buffer, _all_lines, _phase, _current, _delay_total, _download_total
+    )
+
+    proc.wait()
+    write_progress_done(" | CFST测速完成")
+
+    ip_file.unlink(missing_ok=True)
+
+    output = "\n".join(_all_lines)
+
+    if proc.returncode != 0:
+        print()
+        print(c(f"  [FAIL] cfst 返回码 {proc.returncode}", C.LR))
+        return
 
     result_lines: list[str] = []
     in_table = False
@@ -971,8 +1068,6 @@ def _run_cfst_speedtest(verified_file: Path, a, tag: str) -> None:
 
     if not result_lines:
         print(c("  [CFST] 未获得有效测速结果", C.LY))
-        if stderr_output.strip():
-            print(c(f"  [CFST stderr] {stderr_output.strip()[:200]}", C.LY))
         return
 
     print_sep("─", C.B)
