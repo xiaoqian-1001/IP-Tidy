@@ -854,6 +854,143 @@ def _generate_csv(verified_file: Path, asns: list[str], a,
     return csv_path, passed_count
 
 
+CFST_DIR = Path.home() / ".config" / "ip-tidy"
+CFST_BIN = CFST_DIR / "cfst"
+CFST_RESULT_LIMIT = 15
+
+
+def _ensure_cfst_binary() -> Path:
+    if CFST_BIN.exists() and os.access(str(CFST_BIN), os.X_OK):
+        return CFST_BIN
+
+    import platform as _platform
+    _arch = _platform.machine()
+    if _arch == "x86_64":
+        _cfst_arch = "amd64"
+    elif _arch in ("aarch64", "arm64"):
+        _cfst_arch = "arm64"
+    else:
+        _cfst_arch = "amd64"
+
+    _url = f"https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/cfst_linux_{_cfst_arch}.tar.gz"
+    print(c(f"  [CFST] 下载 cfst 二进制... ({_url})", C.W))
+
+    CFST_DIR.mkdir(parents=True, exist_ok=True)
+    import tempfile, tarfile, urllib.request as _req
+    _tmp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as _tmp:
+            _tmp_path = _tmp.name
+        _req.urlretrieve(_url, _tmp_path)
+        with tarfile.open(_tmp_path, "r:gz") as _tar:
+            _tar.extract("cfst", str(CFST_DIR))
+        os.chmod(str(CFST_BIN), 0o755)
+        print(c(f"  [CFST] 已安装到 {CFST_BIN}", C.G))
+        return CFST_BIN
+    except Exception:
+        print(c(f"  [FAIL] cfst 下载失败，请手动安装到 {CFST_BIN}", C.LR))
+        raise
+    finally:
+        if _tmp_path and os.path.exists(_tmp_path):
+            os.unlink(_tmp_path)
+
+
+def _run_cfst_speedtest(verified_file: Path, a, tag: str) -> None:
+    if not (verified_file.exists() and verified_file.stat().st_size > 0):
+        return
+
+    ips: set[str] = set()
+    with open(verified_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("IP"):
+                continue
+            parts = line.split(",")
+            if parts:
+                ips.add(parts[0])
+
+    if not ips:
+        return
+
+    if not a.cfst:
+        try:
+            ch = input(c(f"  是否进行 CloudflareSpeedTest 测速优选？({len(ips)} 个IP, y/n, 回车跳过): ", C.Y)).strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            ch = ""
+        if ch != "y":
+            print(c("  [已跳过] CloudflareSpeedTest 测速", C.LG))
+            return
+    else:
+        print(c(f"  [CFST] CloudflareSpeedTest 测速 ({len(ips)} 个IP)", C.G))
+
+    try:
+        cfst_bin = _ensure_cfst_binary()
+    except Exception:
+        return
+
+    ip_file = BASE / ".cfst_ips.txt"
+    ip_file.write_text("\n".join(sorted(ips)) + "\n")
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    result_file = BASE / f"cfst_{tag}_{ts}.csv"
+
+    print(c(f"  [CFST] 开始测速，目标取前 {CFST_RESULT_LIMIT} 条最优 IP...", C.W))
+    try:
+        proc = subprocess.run(
+            [str(cfst_bin), "-f", str(ip_file),
+             "-dn", str(CFST_RESULT_LIMIT), "-p", str(CFST_RESULT_LIMIT),
+             "-o", str(result_file)],
+            capture_output=True, text=True, timeout=600,
+            cwd=str(BASE)
+        )
+    except subprocess.TimeoutExpired:
+        print(c("  [FAIL] cfst 执行超时 (10分钟)", C.LR))
+        ip_file.unlink(missing_ok=True)
+        return
+    except FileNotFoundError:
+        print(c(f"  [FAIL] cfst 二进制不可用: {cfst_bin}", C.LR))
+        ip_file.unlink(missing_ok=True)
+        return
+    finally:
+        ip_file.unlink(missing_ok=True)
+
+    output = proc.stdout
+    stderr_output = proc.stderr
+
+    result_lines: list[str] = []
+    in_table = False
+    for line in output.split("\n"):
+        stripped = line.strip()
+        if "IP 地址" in stripped and "已发送" in stripped:
+            in_table = True
+            continue
+        if in_table and re.match(r'^\d{1,3}\.', stripped):
+            result_lines.append(stripped)
+        elif in_table and stripped == "":
+            in_table = False
+
+    if not result_lines:
+        print(c("  [CFST] 未获得有效测速结果", C.LY))
+        if stderr_output.strip():
+            print(c(f"  [CFST stderr] {stderr_output.strip()[:200]}", C.LY))
+        return
+
+    print_sep("─", C.B)
+    print(c(f"  CloudflareSpeedTest 最优 IP（按下载速度排序，共 {len(result_lines)} 条）", C.LC))
+    print(c(f"  {'IP 地址':<20} {'已发送':<8} {'已接收':<8} {'丢包率':<8} {'平均延迟':<10} {'下载速度(MB/s)':<16} 地区码", C.W))
+    for i, rl in enumerate(result_lines):
+        color = C.G if i == 0 else (C.GY if i < 3 else C.W)
+        print(c(f"  {rl}", color))
+
+    if result_file.exists() and result_file.stat().st_size > 0:
+        print()
+        print(c(f"  完整结果已保存到: {result_file.name}", C.G))
+    else:
+        print(c("  [CFST] 结果文件为空", C.LY))
+
+    return result_file
+
+
 def main() -> None:
     main_start = time.time()
     parser = argparse.ArgumentParser(
@@ -890,6 +1027,8 @@ def main() -> None:
                         help="智能子网分级: 大 CIDR 拆 /24 抽样探活, 仅扫活跃子网")
     parser.add_argument("-i", "--incremental", action="store_true",
                         help="增量扫描: 仅扫描上次保存后新增的 CIDR 段")
+    parser.add_argument("-c", "--cfst", action="store_true",
+                        help="自动运行 CloudflareSpeedTest 对结果 IP 测速优选")
     a = parser.parse_args()
 
     if a.geo_update:
@@ -994,8 +1133,11 @@ def main() -> None:
 
     verified_file = BASE / "verified.txt"
     csv_path, passed_count = _generate_csv(verified_file, asns, a,
-                                           incr_tag, incr_saved_results,
-                                           incr_full_cidrs, v4_list, passed_count)
+                                            incr_tag, incr_saved_results,
+                                            incr_full_cidrs, v4_list, passed_count)
+
+    cfst_tag = "_".join(asns) if asns else "cidr"
+    _run_cfst_speedtest(verified_file, a, cfst_tag)
 
     print_result_header(
         len(asns), cidr_count_val, total_open, cf_nodes, passed_count, v4_cidr_count,
