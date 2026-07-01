@@ -953,7 +953,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
 
     proc = subprocess.Popen(
         [str(cfst_bin), "-f", str(ip_file),
-         "-dn", str(cfst_limit), "-p", str(cfst_limit),
+         "-dn", str(len(ips)), "-p", str(cfst_limit),
          "-o", str(result_file)],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
