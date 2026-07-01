@@ -934,12 +934,30 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     cands = [f"{ip}:443" for ip in ips]
     top_k = rtt_limit if len(ips) > rtt_limit else len(ips)
     rtt_results = rtt_sort(cands, top_k=top_k)
-    ips = {r.ip for r in rtt_results}
-    if len(ips) > rtt_limit:
-        print(c(f"  [RTT] 候选 IP ({len(rtt_results)} 条存活) 预筛至 {rtt_limit} 个(40%)", C.W))
+
+    # CF-RAY 过滤：剔除未回传 CF-RAY 头的非 CF IP
+    cf_valid = [r for r in rtt_results if r.cf_ray]
+    filtered = len(rtt_results) - len(cf_valid)
+    if filtered:
+        print(c(f"  [RTT] {filtered} 个 IP 未通过 CF-RAY 验证（非 Cloudflare 节点），已过滤", C.LY))
+
+    # 按 colo 分组，每 colo 取延迟最低的 top_k 个（min-heap）
+    if cf_valid:
+        import heapq
+        from collections import defaultdict
+        per_colo: dict[str, list[tuple[float, str]]] = defaultdict(list)
+        colo_top = max(1, len(cf_valid) // len({r.colo or "unknown" for r in cf_valid}) + 1)
+        for r in cf_valid:
+            colo = r.colo or "unknown"
+            heap = per_colo[colo]
+            if len(heap) < colo_top:
+                heapq.heappush(heap, (r.rtt_ms, r.ip))
+            else:
+                heapq.heappushpop(heap, (r.rtt_ms, r.ip))
+        ips = {ip for heap in per_colo.values() for _, ip in heap}
+        print(c(f"  [RTT] CF-RAY 验证通过 {len(cf_valid)} 个，按 colo 分组保留 {len(ips)} 个", C.G))
     else:
-        print(c(f"  [RTT] 候选 IP ({len(cands)} 条) 过滤超时 → {len(rtt_results)} 条存活", C.W))
-    print(c(f"  [RTT] {len(ips)} 个 IP 进入 cfst", C.G))
+        ips = {r.ip for r in rtt_results if r.cf_ray}
 
     ip_file = BASE / ".cfst_ips.txt"
     ip_file.write_text("\n".join(sorted(ips)) + "\n")

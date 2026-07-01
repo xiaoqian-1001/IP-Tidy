@@ -417,38 +417,64 @@ def http_latency(ip: str, port: int = 443, timeout: float = 5) -> int:
 
 
 def ssl_create_unverified():
-    import ssl
-    ctx = ssl.create_default_context()
+    import ssl as _ssl
+    ctx = _ssl.create_default_context()
     ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+    ctx.verify_mode = _ssl.CERT_NONE
     return ctx
 
 
 def cf_download(ip: str, port: str) -> float:
-    best = 0.0
+    best_window = 0.0
+    port_val = int(port)
     for host, url, size_mb, _label in _SPEED_TESTS:
         try:
             timeout = 15 if size_mb < 10 else 30
-            r = subprocess.run([
-                "curl", "--resolve", f"{host}:443:{ip}",
-                "--connect-to", f"{host}:443:{ip}:{port}",
-                "-o", "/dev/null", "-s", "-w", "%{speed_download}",
-                "--connect-timeout", "5", "--max-time", str(timeout),
-                url,
-            ], capture_output=True, text=True, timeout=timeout + 5)
-            mbps = round(float(r.stdout.strip() or 0) * 8 / 1_000_000, 2)
-            if mbps > best:
-                best = mbps
-        except (ValueError, subprocess.TimeoutExpired, OSError):
+            ctx = ssl_create_unverified()
+            req = urllib.request.Request(url, headers={"Host": host})
+            resp = urllib.request.urlopen(req, timeout=timeout, context=ctx)
+            if resp.getcode() != 200:
+                resp.read()
+                continue
+
+            window_start = time.time()
+            warmup_end = window_start + 1.0
+            window_bytes = 0
+            peak_kbps = 0
+            chunk = resp.read(65536)
+            while chunk:
+                now = time.time()
+                if now >= warmup_end:
+                    window_bytes += len(chunk)
+                    elapsed = now - window_start
+                    if elapsed >= 1.0:
+                        kbps = (window_bytes / 1024) / elapsed
+                        if kbps > peak_kbps:
+                            peak_kbps = kbps
+                        window_bytes = 0
+                        window_start = now
+                chunk = resp.read(65536)
+            resp.close()
+            # 尾窗口 ≥ 200ms 计入
+            if window_bytes > 0:
+                leftover = time.time() - window_start
+                if leftover > 0.2:
+                    kbps = (window_bytes / 1024) / leftover
+                    if kbps > peak_kbps:
+                        peak_kbps = kbps
+
+            mbps_sliding = round(peak_kbps * 8 / 1024, 2) if peak_kbps > 0 else 0
+            if mbps_sliding > best_window:
+                best_window = mbps_sliding
+        except Exception:
             continue
-    return best
+    return best_window
 
 
 def test_one(parts: list[str]) -> tuple[str, int, float]:
     ip, port = parts[0], parts[1]
     lat = tcp_latency(ip, int(port))
     spd = cf_download(ip, port) if lat > 0 else 0.0
-    hlat = http_latency(ip, int(port)) if lat > 0 else 0
     result = parts[:]
     result[6] = str(lat)
     result[7] = str(round(spd, 2))
