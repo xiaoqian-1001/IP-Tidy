@@ -1319,7 +1319,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             _safe_unlink(f)
         return 0
 
-    for f in (cidr_file, cf_in, cf_out):
+    for f in (cidr_file, cf_in):
         _safe_unlink(f)
 
     write_progress_done(" | ETA 0分0秒 | CF检测")
