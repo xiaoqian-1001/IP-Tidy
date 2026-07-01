@@ -1,6 +1,6 @@
 import socket
 import time
-import statistics
+import ssl
 import concurrent.futures
 from dataclasses import dataclass
 from typing import Optional
@@ -10,33 +10,62 @@ from typing import Optional
 class RttResult:
     ip: str
     port: int
-    rtt_avg_ms: float
-    rtt_min_ms: float
-    rtt_std_ms: float
+    rtt_ms: float
+    cf_ray: bool
+    colo: str
     reachable: bool
 
 
 TCP_TIMEOUT = 3
-TCP_SAMPLES = 3
+TRACE_HOST = b"speed.cloudflare.com"
+TRACE_PATH = b"/cdn-cgi/trace"
+HTTP_REQ = b"GET " + TRACE_PATH + b" HTTP/1.1\r\nHost: " + TRACE_HOST + b"\r\nConnection: close\r\n\r\n"
 
 
-def _measure_rtt(ip: str, port: int, timeout: int = TCP_TIMEOUT, samples: int = TCP_SAMPLES) -> RttResult:
-    rtts: list[float] = []
-    for _ in range(samples):
-        try:
-            start = time.time()
-            with socket.create_connection((ip, port), timeout=timeout):
-                elapsed = (time.time() - start) * 1000
-            rtts.append(elapsed)
-        except (socket.timeout, OSError):
+def _parse_trace(body: str) -> tuple[bool, str]:
+    colo = ""
+    for line in body.splitlines():
+        if line.startswith("colo="):
+            colo = line[5:].strip()
             break
-    if not rtts:
-        return RttResult(ip=ip, port=port, rtt_avg_ms=0, rtt_min_ms=0, rtt_std_ms=0, reachable=False)
-    avg = statistics.mean(rtts)
-    rmin = min(rtts)
-    std = statistics.stdev(rtts) if len(rtts) > 1 else 0
-    return RttResult(ip=ip, port=port, rtt_avg_ms=round(avg, 1), rtt_min_ms=round(rmin, 1),
-                     rtt_std_ms=round(std, 1), reachable=True)
+    return bool(colo), colo
+
+
+def _check_one(ip: str, port: int, timeout: int = TCP_TIMEOUT) -> RttResult:
+    try:
+        start = time.time()
+        sock = socket.create_connection((ip, port), timeout=timeout)
+        rtt_ms = round((time.time() - start) * 1000, 1)
+
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        ssock = ctx.wrap_socket(sock, server_hostname=TRACE_HOST.decode())
+        ssock.settimeout(timeout)
+        ssock.sendall(HTTP_REQ)
+
+        resp = b""
+        while True:
+            chunk = ssock.read(4096)
+            if not chunk:
+                break
+            resp += chunk
+        ssock.close()
+
+        header_end = resp.find(b"\r\n\r\n")
+        if header_end == -1:
+            return RttResult(ip=ip, port=port, rtt_ms=rtt_ms, cf_ray=False, colo="", reachable=True)
+
+        headers = resp[:header_end].decode("utf-8", errors="replace")
+        body = resp[header_end + 4:].decode("utf-8", errors="replace")
+
+        has_ray = "CF-RAY" in headers or "cf-ray" in headers
+        _, colo = _parse_trace(body if has_ray else "")
+
+        return RttResult(ip=ip, port=port, rtt_ms=rtt_ms, cf_ray=has_ray, colo=colo, reachable=True)
+
+    except (socket.timeout, OSError):
+        return RttResult(ip=ip, port=port, rtt_ms=0, cf_ray=False, colo="", reachable=False)
 
 
 def rtt_sort(
@@ -45,7 +74,6 @@ def rtt_sort(
     concurrency: int = 50,
     port: int = 443,
     timeout: int = TCP_TIMEOUT,
-    samples: int = TCP_SAMPLES,
 ) -> list[RttResult]:
     parsed: list[tuple[str, int]] = []
     for cand in candidates:
@@ -56,7 +84,7 @@ def rtt_sort(
 
     results: list[RttResult] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
-        futs = [executor.submit(_measure_rtt, ip, p, timeout, samples) for ip, p in parsed]
+        futs = [executor.submit(_check_one, ip, p, timeout) for ip, p in parsed]
         for f in concurrent.futures.as_completed(futs):
             try:
                 r = f.result()
@@ -65,5 +93,5 @@ def rtt_sort(
             except (OSError, RuntimeError):
                 pass
 
-    results.sort(key=lambda x: x.rtt_avg_ms)
+    results.sort(key=lambda x: x.rtt_ms)
     return results[:top_k]
