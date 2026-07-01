@@ -59,6 +59,6 @@ def ray_check(
         for f in concurrent.futures.as_completed(futs):
             try:
                 results.append(f.result())
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
     return results

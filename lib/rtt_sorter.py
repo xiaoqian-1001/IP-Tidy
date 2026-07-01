@@ -62,7 +62,7 @@ def rtt_sort(
                 r = f.result()
                 if r.reachable:
                     results.append(r)
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
 
     results.sort(key=lambda x: x.rtt_avg_ms)

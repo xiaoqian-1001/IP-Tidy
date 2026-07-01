@@ -31,7 +31,7 @@ def _asn_cache_load() -> dict:
     try:
         if _ASN_CACHE.exists():
             return json.loads(_ASN_CACHE.read_bytes())
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         pass
     return {}
 
@@ -289,7 +289,7 @@ def smart_subnet_probe(v4_cidrs: list[str],
             try:
                 if future.result():
                     alive_subs.add(sub)
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
     alive_cidrs = sorted(alive_subs)
     if not alive_cidrs:
@@ -323,7 +323,7 @@ def _run_speed_test_impl(ip: str, port: int) -> str:
             mbps = round(float(r.stdout.strip() or 0) * 8 / 1_000_000, 2)
             if mbps > best:
                 best = mbps
-        except Exception:
+        except (subprocess.TimeoutExpired, OSError, ValueError):
             continue
     if best > 0:
         return f"{best:.2f} MB/s"
@@ -347,7 +347,7 @@ def enrich_geoip(results: list[dict]) -> None:
                     r["region"] = info["city"]
                 if info.get("isp"):
                     r["isp"] = info["isp"]
-        except Exception:
+        except (KeyError, TypeError):
             pass
 
 

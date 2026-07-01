@@ -75,7 +75,7 @@ def _format_csv_line(parts: list[str], do_geo: bool = False) -> str:
                     country = gi["country"]
                 if gi.get("city"):
                     city = gi["city"]
-        except Exception:
+        except (OSError, TypeError):
             pass
     return f"{ip},{port},TRUE,{colo},{country},{city},{latency},{spd},{asn_val},{proto}"
 
@@ -306,7 +306,7 @@ def _pipeline(cfg: ScannerConfig) -> tuple[int, int]:
     ], check=True)
 
     with open(verified_file) as f:
-        passed = sum(1 for _ in f) - 1
+        passed = max(0, sum(1 for _ in f) - 1)
     passed = max(0, passed)
 
     rate_pct = passed / hits * 100 if hits else 0
@@ -336,7 +336,7 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
         return 0
 
     saved: dict[str, str] = {}
-    saved_header = "IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN,协议"
+    saved_header = _CSV_HEADER
     if verified_file.exists() and verified_file.stat().st_size > 0:
         with open(verified_file) as f:
             for line in f:
@@ -352,8 +352,7 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
 
     port_count_val = port_count(WIDE_PORTS)
     print(f"\n  深度扫描: {len(ips)} 个 IP × {port_count_val} 端口 ({cfg.masscan_rate} pps)")
-    eta_s = max(1, port_count_val * len(ips) // max(1, cfg.masscan_rate))
-    print(f"  预计: {eta_s // 60}m {eta_s % 60}s ({', '.join(sorted(ips)[:5])}{'...' if len(ips) > 5 else ''})")
+    print(f"  IP: {', '.join(sorted(ips)[:5])}{'...' if len(ips) > 5 else ''})")
 
     ip_file = BASE / "deep_ips.txt"
     ip_file.write_text("\n".join(sorted(ips)) + "\n")
@@ -421,22 +420,27 @@ def step_speed_test(cfg: ScannerConfig) -> None:
     print(f"  IP 数: {total}")
 
     results: list[tuple[str, int]] = []
+    chunk_size = min(total, cfg.api_concurrency * 2)
     with ThreadPoolExecutor(max_workers=min(total, cfg.api_concurrency)) as ex:
-        fmap = {}
-        for idx, entry in enumerate(entries):
-            parts = entry.split(",")
-            if len(parts) < 9:
-                continue
-            fmap[ex.submit(test_one, parts)] = idx
+        for chunk_start in range(0, len(entries), chunk_size):
+            chunk = entries[chunk_start:chunk_start + chunk_size]
+            fmap = {}
+            for idx_offset, entry in enumerate(chunk):
+                parts = entry.split(",")
+                if len(parts) < 9:
+                    continue
+                fmap[ex.submit(test_one, parts)] = chunk_start + idx_offset
 
-        done = 0
-        for future in as_completed(fmap):
-            idx = fmap[future]
-            line, lat, spd = future.result()
-            results.append((line, idx))
-            done += 1
-            write_progress(done / total * 100,
-                           f" | 延迟 {lat}ms  {spd}Mbps")
+            for future in as_completed(fmap):
+                idx = fmap[future]
+                try:
+                    line, lat, spd = future.result()
+                    results.append((line, idx))
+                except (OSError, ValueError, IndexError):
+                    continue
+                done += 1
+                write_progress(done / total * 100,
+                               f" | 延迟 {lat}ms  {spd}Mbps")
 
     results.sort(key=lambda x: x[1])
     with open(verified_file, "w") as f:
@@ -559,7 +563,7 @@ def _resolve_port_mode(a, cfg, sys_args: list[str]) -> bool:
         print(f"  默认端口：{cfg.scan_ports}")
         print(f"  宽端口池：{WIDE_PORTS}")
         try:
-            inp = input(c("  端口模式（回车=默认端口 | w=宽端口 | r=随机5个端口 | 直接输入=自定义端口）：", C.Y)).strip().lower()
+            inp = _safe_input("  端口模式（回车=默认端口 | w=宽端口 | r=随机5个端口 | 直接输入=自定义端口）：", to_lower=True)
         except (EOFError, KeyboardInterrupt):
             inp = ""
         if inp == "w":
@@ -579,7 +583,7 @@ def _resolve_port_mode(a, cfg, sys_args: list[str]) -> bool:
                 print(f"  扫描端口: {cfg.scan_ports}")
         else:
             try:
-                probe = input(c("  是否追加随机端口探活：请输入探测数量（取值 1-100），回车则跳过该步骤：", C.Y)).strip()
+                probe = _safe_input("  是否追加随机端口探活：请输入探测数量（取值 1-100），回车则跳过该步骤：")
             except (EOFError, KeyboardInterrupt):
                 probe = ""
             if probe.isdigit():
@@ -618,10 +622,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
         )
         if has_large:
             print(c(f"  [INFO] 检测到大 CIDR (/{_SUBNET_THRESHOLD}+)，可启用智能子网分级探活", C.W))
-            try:
-                ch = input(c("  是否启用智能子网分级？(y/n, 回车跳过): ", C.Y)).strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                ch = ""
+            ch = _safe_input("  是否启用智能子网分级？(y/n, 回车跳过): ", to_lower=True)
             if ch == "y":
                 a.smart = True
                 print(c("  [已确认] 智能子网分级探活 (拆分 /24 抽样)", C.G))
@@ -631,34 +632,25 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
     do_speed = a.speed
     do_deep = a.deep
     if not do_speed:
-        try:
-            ts = input(c("  是否测速？(y/n, 回车跳过): ", C.Y)).strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            ts = ""
+        ts = _safe_input("  是否测速？(y/n, 回车跳过): ", to_lower=True)
         do_speed = ts == "y"
         if not do_speed:
             print(c("  [已跳过] 测速功能 (回车自动选择)", C.G))
     if not do_deep and not sys.argv[1:]:
-        try:
-            ch = input(c("  深度扫描？(y/n, 回车跳过): ", C.Y)).strip().lower()
-            do_deep = ch == "y"
-            if not do_deep:
-                print(c("  [已跳过] 深度扫描 (回车自动选择)", C.G))
-        except (EOFError, KeyboardInterrupt):
-            do_deep = False
+        ch = _safe_input("  深度扫描？(y/n, 回车跳过): ", to_lower=True)
+        do_deep = ch == "y"
+        if not do_deep:
+            print(c("  [已跳过] 深度扫描 (回车自动选择)", C.G))
     if not a.incremental and not sys.argv[1:]:
         incr_tag_hint = _incr_tag(asns, v4_cidrs)
         has_state = (INCR_DIR / f"{incr_tag_hint}_cidrs.txt").exists()
         if has_state:
-            try:
-                ch = input(c("  是否开启增量扫描模式？仅对新增CIDR网段执行探测 (y/n, 回车跳过): ", C.Y)).strip().lower()
-                a.incremental = ch == "y"
-                if a.incremental:
-                    print(c("  [已确认] 增量扫描 (对比上次CIDR，仅扫新增)", C.G))
-                else:
-                    print(c("  [已跳过] 增量扫描 (回车自动选择)", C.G))
-            except (EOFError, KeyboardInterrupt):
-                pass
+            ch = _safe_input("  是否开启增量扫描模式？仅对新增CIDR网段执行探测 (y/n, 回车跳过): ", to_lower=True)
+            a.incremental = ch == "y"
+            if a.incremental:
+                print(c("  [已确认] 增量扫描 (对比上次CIDR，仅扫新增)", C.G))
+            else:
+                print(c("  [已跳过] 增量扫描 (回车自动选择)", C.G))
 
     return do_speed, do_deep
 
@@ -715,6 +707,14 @@ def _safe_unlink(p: Path) -> None:
         pass
 
 
+def _safe_input(prompt: str, default: str = "", to_lower: bool = False) -> str:
+    try:
+        val = input(c(prompt, C.Y)).strip()
+        return val.lower() if to_lower else val
+    except (EOFError, KeyboardInterrupt):
+        return default
+
+
 def _cleanup_temp_files(a) -> None:
     for stale in ("cidrs.txt", "cidrs_v4.txt",
                   "masscan_result.xml", "cf_hits.txt", "verified.txt"):
@@ -762,6 +762,8 @@ def _generate_csv(verified_file: Path, asns: list[str], a,
             parts = p.split(",")
             f.write(_format_csv_line(parts, do_geo=True) + "\n")
 
+    sys.stderr.write("\n")
+    sys.stderr.flush()
     print(c(f"  结果: {len(parsed)} 条 -> {csv_path.name}", C.G))
 
     if a.incremental and incr_tag and incr_saved_results:
@@ -798,10 +800,8 @@ def _generate_csv(verified_file: Path, asns: list[str], a,
 CFST_DIR = Path.home() / ".config" / "ip-tidy"
 CFST_BIN = CFST_DIR / "cfst"
 CFST_DEFAULT_LIMIT = 15
-CFST_DELAY_WEIGHT = 20
-CFST_DOWNLOAD_WEIGHT = 80
+CFST_READ_BUFFER_SIZE = 65536
 CFST_HEARTBEAT_THRESHOLD = 10
-CFST_MIN_ESTIMATED_SECONDS = 60
 CFST_MAX_HEARTBEAT_PCT = 95
 HTTP_SERVER_PORT = 8899
 HTTP_SERVER_PORT_RANGE_END = 9900
@@ -894,10 +894,15 @@ def _parse_cfst_buffer(_buffer: bytes, _all_lines: list[str],
 
 def _compute_cfst_progress(_phase: str, _current: int,
                            _delay_total: int, _download_total: int) -> float:
+    _total = _delay_total + _download_total
+    if _total == 0:
+        return 0.0
     if _phase == "delay":
-        return min(_current / max(_delay_total, 1) * CFST_DELAY_WEIGHT, CFST_DELAY_WEIGHT)
-    else:
-        return CFST_DELAY_WEIGHT + min(_current / max(_download_total, 1) * CFST_DOWNLOAD_WEIGHT, CFST_DOWNLOAD_WEIGHT)
+        return _current / _delay_total * (_delay_total / _total * 100) if _delay_total else 0.0
+    base = _delay_total / _total * 100
+    if _current >= _download_total or not _download_total:
+        return 100.0
+    return base + _current / _download_total * (_download_total / _total * 100)
 
 
 def _run_cfst_speedtest(a, tag: str) -> None:
@@ -909,31 +914,25 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     cfst_limit = getattr(a, "cfst_count", None) or CFST_DEFAULT_LIMIT
 
     if not a.cfst:
-        try:
-            ch = input(c(f"  是否进行 CloudflareSpeedTest 测速优选？({len(ips)} 个IP, y/n, 回车跳过): ", C.Y)).strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            ch = ""
+        ch = _safe_input(f"  是否进行 CloudflareSpeedTest 测速优选？({len(ips)} 个IP, y/n, 回车跳过): ", to_lower=True)
         if ch != "y":
             print(c("  [已跳过] CloudflareSpeedTest 测速", C.LG))
             return
-        try:
-            cnt = input(c(f"  取前多少条最优 IP？(默认 {CFST_DEFAULT_LIMIT}): ", C.Y)).strip()
-            if cnt.isdigit() and int(cnt) > 0:
-                cfst_limit = int(cnt)
-            elif cnt:
-                print(c(f"  无效输入，使用默认: {CFST_DEFAULT_LIMIT}", C.LY))
-        except (EOFError, KeyboardInterrupt):
-            pass
+        cnt = _safe_input(f"  取前多少条最优 IP？(默认 {CFST_DEFAULT_LIMIT}): ")
+        if cnt.isdigit() and int(cnt) > 0:
+            cfst_limit = int(cnt)
+        elif cnt:
+            print(c(f"  无效输入，使用默认: {CFST_DEFAULT_LIMIT}", C.LY))
     else:
         print(c(f"  [CFST] CloudflareSpeedTest 测速 ({len(ips)} 个IP, 取前 {cfst_limit} 条)", C.G))
 
     try:
         cfst_bin = _ensure_cfst_binary()
-    except Exception:
+    except OSError:
         return
 
     rtt_limit = max(1, int(len(ips) * 0.4))
-    if len(ips) > rtt_limit:
+    if len(ips) > rtt_limit and len(ips) > cfst_limit:
         from lib.rtt_sorter import rtt_sort
         print(c(f"  [RTT] 候选 IP ({len(ips)}) 过多，预筛至 {rtt_limit} 个(40%)...", C.W))
         cands = [f"{ip}:443" for ip in ips]
@@ -970,8 +969,8 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     _start_time = time.time()
     _phase = "delay"
     _current = 0
-    _delay_total = 1
-    _download_total = cfst_limit
+    _delay_total = len(ips)
+    _download_total = min(len(ips), cfst_limit)
     _last_update = time.time()
     _heartbeat_count = 0
 
@@ -1027,13 +1026,14 @@ def _run_cfst_speedtest(a, tag: str) -> None:
             _eta_s = ""
         _phase_label = "延迟测速" if _phase == "delay" else "下载测速"
         write_progress(_pct, f" | CFST {_phase_label}{_eta_s}")
-        time.sleep(0.15)
+        time.sleep(1.0 / max(1, len(ips) ** 0.5))
 
     _buffer, _phase, _current, _delay_total, _download_total = _parse_cfst_buffer(
         _buffer, _all_lines, _phase, _current, _delay_total, _download_total
     )
 
     proc.wait()
+    proc.stdout.close()
     write_progress_done(" | CFST测速完成")
 
     ip_file.unlink(missing_ok=True)
@@ -1055,7 +1055,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
             _hdr_idx = stripped.find("IP 地址")
             cfst_header = stripped[_hdr_idx:] if _hdr_idx >= 0 else stripped
             continue
-        if in_table and re.match(r'^\d{1,3}\.', stripped):
+        if in_table and re.match(r'^[\da-fA-F.:]+', stripped):
             result_lines.append(stripped)
         elif in_table and stripped == "":
             in_table = False
@@ -1253,10 +1253,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
         return 0
 
     print(f"  [当前结果] 通过 {len(existing)} 个 IP:端口")
-    try:
-        ch = input(c("  是否启用深度挖掘？(提取 IP -> /16 CIDR 二次扫描, y/n, 回车跳过): ", C.Y)).strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        ch = ""
+    ch = _safe_input("  是否启用深度挖掘？(提取 IP -> /16 CIDR 二次扫描, y/n, 回车跳过): ", to_lower=True)
     if ch != "y":
         print(c("  [已跳过] 深度挖掘", C.LG))
         return 0
@@ -1264,14 +1261,14 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
     print(c("  [已确认] 深度挖掘", C.LG))
 
     prefix = 16
-    try:
-        prefix_inp = input(c("  扩展大小 (/16, /20, /21, /22, /23, /24, 回车=/16): ", C.Y)).strip()
-        if prefix_inp:
+    prefix_inp = _safe_input("  扩展大小 (/16, /20, /21, /22, /23, /24, 回车=/16): ")
+    if prefix_inp:
+        try:
             p = int(prefix_inp.lstrip("/"))
             if p in (16, 20, 21, 22, 23, 24):
                 prefix = p
-    except (EOFError, ValueError):
-        pass
+        except ValueError:
+            pass
     print(f"  扩展为 /{prefix} CIDR")
 
     cidr_set: set[str] = set()
@@ -1322,11 +1319,8 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
             _safe_unlink(f)
         return 0
 
-# ... (after hit processing)
-
     for f in (cidr_file, cf_in, cf_out):
         _safe_unlink(f)
-        return 0
 
     write_progress_done(" | ETA 0分0秒 | CF检测")
 
@@ -1436,7 +1430,12 @@ def _serve_download(file_path: Path) -> None:
                 return
 
     server: Optional[subprocess.Popen] = None
+    tmpdir: Optional[Path] = None
     try:
+        import tempfile
+        tmpdir = Path(tempfile.mkdtemp(prefix="cf-speed-dns-"))
+        (tmpdir / file_path.name).symlink_to(file_path.resolve())
+
         print_sep("─", C.B)
         print(c("  任务执行完毕，文件下载服务已成功启动", C.LG))
         print(c(f"  http://{lan_ip}:{port}/{file_path.name}", C.LM))
@@ -1446,7 +1445,7 @@ def _serve_download(file_path: Path) -> None:
         print()
         server = subprocess.Popen(
             [sys.executable, "-m", "http.server", str(port),
-             "--directory", str(BASE)],
+             "--directory", str(tmpdir)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if sys.stdin.isatty():
             print(c("  (请在浏览器中下载文件后按 Ctrl+C 关闭服务)", C.CY))
@@ -1469,6 +1468,12 @@ def _serve_download(file_path: Path) -> None:
                 server.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 server.kill()
+        if tmpdir:
+            _safe_unlink(tmpdir / file_path.name)
+            try:
+                tmpdir.rmdir()
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":

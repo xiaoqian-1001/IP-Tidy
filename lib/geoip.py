@@ -70,7 +70,7 @@ def lookup(ip: str) -> dict:
                 subs = data.get("subdivisions", [])
                 result["region"] = subs[0].get("iso_code", "") if subs else ""
                 result["city"] = (data.get("city") or {}).get("names", {}).get("en", "")
-        except Exception:
+        except (OSError, TypeError, KeyError):
             pass
 
     if _MAXMIND_ASN:
@@ -79,7 +79,7 @@ def lookup(ip: str) -> dict:
             if data:
                 result["asn"] = f"AS{data.get('autonomous_system_number', '')}"
                 result["isp"] = data.get("autonomous_system_organization", "")
-        except Exception:
+        except (OSError, TypeError):
             pass
 
     return result

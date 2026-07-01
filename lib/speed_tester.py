@@ -128,7 +128,7 @@ def speed_test(
                     if rtt_results and r.ip in rtt_results:
                         r.rtt_avg_ms = rtt_results[r.ip]
                 results.append(r)
-            except Exception:
+            except (OSError, RuntimeError, ValueError):
                 pass
     results.sort(key=lambda x: x.bandwidth_mbps, reverse=True)
     return results

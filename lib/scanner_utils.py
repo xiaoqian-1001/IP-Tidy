@@ -217,7 +217,7 @@ def get_system_load() -> tuple[float, int]:
     try:
         with open("/proc/loadavg") as f:
             cpu = float(f.read().split()[0])
-    except Exception:
+    except (FileNotFoundError, OSError, ValueError):
         pass
     mem = 512
     try:
@@ -226,7 +226,7 @@ def get_system_load() -> tuple[float, int]:
                 if "MemAvailable" in line:
                     mem = int(line.split()[1]) // 1024
                     break
-    except Exception:
+    except (FileNotFoundError, OSError, ValueError):
         pass
     return cpu, mem
 
@@ -264,7 +264,7 @@ def find_iface() -> Optional[str]:
         m = re.search(r"dev\s+(\S+)", r.stdout)
         if m:
             return m.group(1)
-    except Exception:
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         pass
     for name in ("eth0", "ens3", "enp0s3", "enp1s0", "ens5"):
         if os.path.exists(f"/sys/class/net/{name}/statistics/tx_packets"):
@@ -282,7 +282,7 @@ def masscan_adapter_ip() -> Optional[str]:
                 ip = m.group(1)
                 if not ip.startswith("127.") and not ip.startswith("169.254."):
                     return ip
-    except Exception:
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         pass
     return None
 
@@ -295,7 +295,7 @@ def shutil_which(cmd: str) -> Optional[str]:
     try:
         import shutil
         return shutil.which(cmd)
-    except Exception:
+    except (ImportError, OSError):
         return None
 
 
@@ -312,7 +312,7 @@ def probe_masscan_rate(quiet: bool = False) -> int:
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                            stdin=subprocess.DEVNULL, timeout=2, check=True)
             sudo_ok = True
-        except Exception:
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
             pass
     if not sudo_ok:
         cores = os.cpu_count() or 1
@@ -403,7 +403,7 @@ def http_latency(ip: str, port: int = 443, timeout: float = 5) -> int:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             elapsed = round((time.time() - t0) * 1000)
         return elapsed
-    except Exception:
+    except (OSError, socket.timeout):
         try:
             url = f"https://{ip}:{port}/"
             req = urllib.request.Request(url, method="HEAD")
@@ -412,7 +412,7 @@ def http_latency(ip: str, port: int = 443, timeout: float = 5) -> int:
             with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
                 elapsed = round((time.time() - t0) * 1000)
             return elapsed
-        except Exception:
+        except (OSError, socket.timeout):
             return 0
 
 
@@ -591,7 +591,7 @@ def parse_targets(raw_args: list[str]) -> tuple[list[str], list[str], list[str]]
                 with open("/dev/tty") as tty:
                     os.dup2(tty.fileno(), 0)
                 raw = input("  填写 ASN 编号或 CIDR 网段，多条记录用英文逗号分隔： ").strip()
-            except Exception:
+            except (EOFError, KeyboardInterrupt, OSError):
                 print(f"\n  请在终端运行: cd {BASE} && python3 run.py\n")
                 sys.exit(0)
     else:

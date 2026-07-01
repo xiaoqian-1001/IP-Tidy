@@ -184,7 +184,7 @@ def _try_http_ip(url: str, timeout: int) -> Optional[str]:
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.read().decode("utf-8").strip()
-    except Exception:
+    except (OSError, socket.timeout, urllib.error.URLError):
         return None
 
 
@@ -195,7 +195,7 @@ def _try_dns_ip(cmd: list[str], timeout: int) -> Optional[str]:
         if out:
             ipaddress.ip_address(out)
             return out
-    except Exception:
+    except (subprocess.TimeoutExpired, OSError, ValueError):
         pass
     return None
 
@@ -259,7 +259,7 @@ def detect_isp(ip: str) -> tuple[str, str, str, str]:
         org = data.get("org", "")
         city = data.get("city", "")
         return ip, country, org, city
-    except Exception:
+    except (OSError, TypeError, KeyError):
         pass
     return ip, "", "", ""
 
@@ -306,7 +306,7 @@ def kill_port_process(port: int) -> bool:
                 os.kill(int(pid_match.group(1)), signal.SIGTERM)
                 time.sleep(0.3)
                 return True
-    except Exception:
+    except (subprocess.TimeoutExpired, OSError):
         pass
     try:
         r = subprocess.run(["lsof", "-ti", f":{port}"],
@@ -316,6 +316,6 @@ def kill_port_process(port: int) -> bool:
                 os.kill(int(line.strip()), signal.SIGTERM)
                 time.sleep(0.3)
                 return True
-    except Exception:
+    except (subprocess.TimeoutExpired, OSError):
         pass
     return False

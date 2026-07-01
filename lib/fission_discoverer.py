@@ -87,7 +87,7 @@ def fission_discover(
             for f in concurrent.futures.as_completed(futs):
                 try:
                     all_domains.extend(f.result())
-                except Exception:
+                except (OSError, socket.gaierror):
                     pass
 
         if not all_domains:
