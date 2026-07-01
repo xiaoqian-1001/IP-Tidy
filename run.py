@@ -762,8 +762,6 @@ def _generate_csv(verified_file: Path, asns: list[str], a,
             parts = p.split(",")
             f.write(_format_csv_line(parts, do_geo=True) + "\n")
 
-    sys.stderr.write("\n")
-    sys.stderr.flush()
     print(c(f"  结果: {len(parsed)} 条 -> {csv_path.name}", C.G))
 
     if a.incremental and incr_tag and incr_saved_results:
