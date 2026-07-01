@@ -661,15 +661,6 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
             except (EOFError, KeyboardInterrupt):
                 pass
 
-    if not a.self_speed and not sys.argv[1:]:
-        pass  # 交互延迟到扫描完成后，显示实际 IP 数量
-
-    if not a.ray_check and not sys.argv[1:]:
-        pass  # 同上
-
-    if not a.fission and not sys.argv[1:]:
-        pass  # 同上
-
     return do_speed, do_deep
 
 
@@ -960,6 +951,15 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     except Exception:
         return
 
+    rtt_limit = cfst_limit * 3
+    if len(ips) > rtt_limit:
+        from lib.rtt_sorter import rtt_sort
+        print(c(f"  [RTT] 候选 IP ({len(ips)}) 过多，预筛至 {rtt_limit} 个...", C.W))
+        cands = [f"{ip}:443" for ip in ips]
+        rtt_results = rtt_sort(cands, top_k=rtt_limit)
+        ips = {r.ip for r in rtt_results}
+        print(c(f"  [RTT] 预筛完成，{len(ips)} 个 IP 进入 cfst", C.G))
+
     ip_file = BASE / ".cfst_ips.txt"
     ip_file.write_text("\n".join(sorted(ips)) + "\n")
 
@@ -1099,180 +1099,6 @@ def _run_cfst_speedtest(a, tag: str) -> None:
 
 
 
-def _run_self_speed_pipeline(a) -> None:
-    ips = _read_verified_entries()
-    if not ips:
-        return
-
-    if not a.self_speed:
-        try:
-            ch = input(c(f"  是否进行自实现测速？(RTT排序 + 滑动窗口峰值速度, {len(ips)} 个IP, y/n, 回车跳过): ", C.Y)).strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            ch = ""
-        if ch != "y":
-            print(c("  [已跳过] 自实现测速", C.LG))
-            return
-        try:
-            top_k_str = input(c(f"  RTT 排序保留前几条做带宽测试？(默认 {a.top_k}): ", C.Y)).strip()
-            if top_k_str.isdigit() and int(top_k_str) > 0:
-                a.top_k = int(top_k_str)
-        except (EOFError, KeyboardInterrupt):
-            pass
-        try:
-            bw_str = input(c(f"  期望带宽阈值 Mbps？(达到后提前终止, 默认 {a.bandwidth}): ", C.Y)).strip()
-            if bw_str.isdigit() and int(bw_str) > 0:
-                a.bandwidth = int(bw_str)
-        except (EOFError, KeyboardInterrupt):
-            pass
-    else:
-        print(c(f"  [自实现测速] 候选 IP: {len(ips)} 个, Top-K: {a.top_k}, 带宽阈值: {a.bandwidth}Mbps", C.G))
-
-    print(c(f"\n  [自实现测速] 候选 IP: {len(ips)} 个", C.LC))
-    print_sep("─", C.B)
-
-    print(c("  阶段 1/3: RTT 排序...", C.W))
-    from lib.rtt_sorter import rtt_sort as _rtt_sort
-    rtt_results = _rtt_sort(ips, top_k=a.top_k)
-    if not rtt_results:
-        print(c("  [FAIL] RTT 排序无可用结果", C.LR))
-        return
-    print(c(f"  RTT 排序完成，取前 {len(rtt_results)} 个", C.G))
-    for r in rtt_results[:3]:
-        print(c(f"    {r.ip}:{r.port}  {r.rtt_avg_ms}ms (抖动 {r.rtt_std_ms}ms)", C.W))
-    if len(rtt_results) > 3:
-        print(c(f"    ... 共 {len(rtt_results)} 个", C.GY))
-
-    print(c("  阶段 2/3: 滑动窗口速度测速...", C.W))
-    from lib.speed_tester import speed_test as _speed_test
-    rtt_map = {r.ip: r.rtt_avg_ms for r in rtt_results}
-    speed_candidates = [f"{r.ip}:{r.port}" for r in rtt_results]
-    speed_results = _speed_test(speed_candidates, bandwidth_target=a.bandwidth, rtt_results=rtt_map)
-    if not speed_results:
-        print(c("  [FAIL] 速度测试无可用结果", C.LR))
-        return
-
-    print(c(f"  速度测试完成，{len(speed_results)} 个有效结果", C.G))
-    for r in speed_results[:3]:
-        if r.error:
-            print(c(f"    {r.ip}:{r.port}  FAIL - {r.error}", C.LR))
-        else:
-            print(c(f"    {r.ip}:{r.port}  {r.peak_speed_kbps}kB/s ({r.bandwidth_mbps}Mbps)  colo={r.colo}", C.W))
-    if len(speed_results) > 3:
-        print(c(f"    ... 共 {len(speed_results)} 个", C.GY))
-
-    print(c("  阶段 3/3: 综合加权排序...", C.W))
-    from lib.weighted_scorer import weighted_sort as _weighted_sort
-    ranked = _weighted_sort(speed_results)
-    if not ranked:
-        return
-
-    print_sep("─", C.B)
-    print(c(f"  测速优选结果（按综合评分排序，共 {len(ranked)} 条）", C.LC))
-    header = f"{'IP':20s} {'端口':6s} {'延迟(ms)':10s} {'峰值kB/s':12s} {'带宽Mbps':10s} {'Colo':6s} {'评分':8s}"
-    print(c(f"  {header}", C.W))
-    for i, r in enumerate(ranked):
-        if i == 0:
-            color = C.LG
-        elif i < 3:
-            color = C.LY
-        else:
-            color = C.W
-        print(c(f"  {r.ip:20s} {r.port:<6d} {r.rtt_avg_ms:<10.1f} {r.peak_speed_kbps:<12.1f} {r.bandwidth_mbps:<10.1f} {r.colo:<6s} {r.score:<8.1f}", color))
-
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    tag = "_".join(getattr(a, "targets", [])) or "cidr"
-    out_file = BASE / f"self_speed_{tag}_{ts}.csv"
-    with open(out_file, "w") as f:
-        f.write("IP,端口,延迟_ms,峰值速度_kBps,带宽_Mbps,数据中心,HTTP延迟_ms,抖动_ms,综合评分\n")
-        for r in ranked:
-            f.write(f"{r.ip},{r.port},{r.rtt_avg_ms},{r.peak_speed_kbps},{r.bandwidth_mbps},{r.colo},{r.http_latency_ms},{r.rtt_std_ms},{r.score}\n")
-    print()
-    print(c(f"  完整结果已保存到: {out_file.name}", C.G))
-    print_sep("─", C.B)
-
-
-def _run_ray_check(a) -> None:
-    candidates = _read_verified_entries()
-    if not candidates:
-        return
-
-    if not a.ray_check:
-        try:
-            ch = input(c(f"  是否进行 CF-RAY 头校验？(HTTP 确认 IP 路由到 Cloudflare, {len(candidates)} 个IP, y/n, 回车跳过): ", C.Y)).strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            ch = ""
-        if ch != "y":
-            print(c("  [已跳过] CF-RAY 头校验", C.LG))
-            return
-    else:
-        print(c(f"  [CF-RAY 校验] 候选 IP: {len(candidates)} 个", C.G))
-
-    print(c(f"\n  [CF-RAY 校验] 候选 IP: {len(candidates)} 个", C.LC))
-    print_sep("─", C.B)
-
-    from lib.ray_checker import ray_check as _ray_check
-    results = _ray_check(candidates)
-    passed = [r for r in results if r.ray_present]
-    print(c(f"  CF-RAY 校验完成: {len(passed)}/{len(results)} 通过", C.G if passed else C.LY))
-    for r in passed[:5]:
-        print(c(f"    {r.ip}:{r.port}  colo={r.colo}  {r.http_latency_ms}ms", C.W))
-    if len(passed) > 5:
-        print(c(f"    ... 共 {len(passed)} 个", C.GY))
-
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_file = BASE / f"ray_checked_{ts}.csv"
-    with open(out_file, "w") as f:
-        f.write("IP,端口,CF-RAY,数据中心,延迟_ms\n")
-        for r in results:
-            f.write(f"{r.ip},{r.port},{r.ray_present},{r.colo},{r.http_latency_ms}\n")
-    print(c(f"  完整结果已保存到: {out_file.name}", C.G))
-
-
-def _run_fission(a) -> None:
-    entries = _read_verified_entries()
-    seed_ips: set[str] = {e.split(":")[0].strip() for e in entries if e.split(":")[0].strip()}
-    if not seed_ips:
-        return
-
-    if not a.fission:
-        try:
-            ch = input(c(f"  是否启用裂变发现？(IP⇄域名反查迭代扩充候选IP, {len(seed_ips)} 个种子IP, y/n, 回车跳过): ", C.Y)).strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            ch = ""
-        if ch != "y":
-            print(c("  [已跳过] 裂变发现", C.LG))
-            return
-        try:
-            depth_str = input(c(f"  裂变深度？(默认 {a.fission_depth}): ", C.Y)).strip()
-            if depth_str.isdigit() and int(depth_str) > 0:
-                a.fission_depth = int(depth_str)
-        except (EOFError, KeyboardInterrupt):
-            pass
-    else:
-        print(c(f"  [裂变发现] 种子 IP: {len(seed_ips)} 个, 深度: {a.fission_depth}", C.G))
-
-    print(c(f"\n  [裂变发现] 种子 IP: {len(seed_ips)} 个, 深度: {a.fission_depth}, 最大 IP: {a.fission_max_ips}", C.LC))
-    print_sep("─", C.B)
-
-    from lib.fission_discoverer import fission_discover as _fission
-    new_ips = _fission(list(seed_ips), max_depth=a.fission_depth, max_ips=a.fission_max_ips)
-    if not new_ips:
-        print(c("  [裂变发现] 未发现新 IP", C.LY))
-        return
-
-    print(c(f"  [裂变发现] 新增 {len(new_ips)} 个 IP", C.G))
-    for ip in new_ips[:10]:
-        print(c(f"    {ip}", C.W))
-    if len(new_ips) > 10:
-        print(c(f"    ... 共 {len(new_ips)} 个", C.GY))
-
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_file = BASE / f"fission_{ts}.txt"
-    out_file.write_text("\n".join(sorted(new_ips)) + "\n")
-    print(c(f"  新 IP 列表已保存到: {out_file.name}", C.G))
-    print(c("  提示: 新 IP 可配合 --skip-masscan 用于下一轮扫描", C.CY))
-
-
 def main() -> None:
     main_start = time.time()
     parser = argparse.ArgumentParser(
@@ -1313,20 +1139,6 @@ def main() -> None:
                         help="自动运行 CloudflareSpeedTest 对结果 IP 测速优选")
     parser.add_argument("--cfst-count", metavar="N", type=int, default=CFST_DEFAULT_LIMIT,
                         help=f"cfst 取前 N 条最优 IP (默认 {CFST_DEFAULT_LIMIT})")
-    parser.add_argument("--ray-check", action="store_true",
-                        help="CF-RAY HTTP 头校验，确认 IP 路由到 Cloudflare 节点")
-    parser.add_argument("--self-speed", action="store_true",
-                        help="使用自实现测速模块替代 cfst 二进制（含 RTT 排序 + 滑动窗口峰值速度）")
-    parser.add_argument("--top-k", metavar="N", type=int, default=10,
-                        help="RTT 排序保留前 N 个 IP 进入带宽测试 (默认 10)")
-    parser.add_argument("--bandwidth", metavar="MBPS", type=int, default=50,
-                        help="期望带宽阈值 Mbps，达到后提前终止该 IP 测速 (默认 50)")
-    parser.add_argument("--fission", action="store_true",
-                        help="启用裂变发现模式，通过 IP↔域名反查迭代扩充候选 IP")
-    parser.add_argument("--fission-depth", metavar="N", type=int, default=2,
-                        help="裂变最大深度 (默认 2)")
-    parser.add_argument("--fission-max-ips", metavar="N", type=int, default=1000,
-                        help="裂变最大 IP 数 (默认 1000)")
     a = parser.parse_args()
 
     if a.geo_update:
@@ -1436,16 +1248,7 @@ def main() -> None:
 
     cfst_tag = "_".join(asns) if asns else "cidr"
 
-    if a.self_speed:
-        _run_self_speed_pipeline(a)
-    else:
-        _run_cfst_speedtest(a, cfst_tag)
-
-    if a.ray_check:
-        _run_ray_check(a)
-
-    if a.fission:
-        _run_fission(a)
+    _run_cfst_speedtest(a, cfst_tag)
 
     print_result_header(
         len(asns), cidr_count_val, total_open, cf_nodes, passed_count, v4_cidr_count,

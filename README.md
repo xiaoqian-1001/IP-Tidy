@@ -1,6 +1,6 @@
 <p align="center">
   <br>
-  <img src="https://img.shields.io/badge/version-2.4.0-blue?style=flat-square" alt="version">
+  <img src=\"https://img.shields.io/badge/version-2.4.1-blue?style=flat-square\" alt=\"version\">
   <img src="https://img.shields.io/badge/python-3.8+-green?style=flat-square" alt="python">
   <img src="https://img.shields.io/badge/platform-linux%20|%20macOS%20|%20WSL2-lightgrey?style=flat-square" alt="platform">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="license">
@@ -73,13 +73,6 @@ qian AS209242,1.2.3.0/24         # ASN + CIDR 混合输入
 -r 4000        # 指定发包速率
 --smart        # 智能子网分级 (大 CIDR 自动探活)
 --cfst-count 30  # cfst 取前 N 条最优 IP (默认 15)
---self-speed   # 自实现测速模块 (RTT排序 + 滑动窗口峰值速度，替代 cfst)
---top-k 10     # RTT 排序保留前 N 个 IP 进入带宽测试 (默认 10)
---bandwidth 50 # 期望带宽阈值 Mbps (默认 50)
---ray-check    # CF-RAY HTTP 头校验，确认 IP 路由到 Cloudflare 节点
---fission      # 裂变发现模式，IP↔域名反查迭代扩充候选 IP
---fission-depth 2    # 裂变最大深度 (默认 2)
---fission-max-ips 1000  # 裂变最大 IP 数 (默认 1000)
 -g             # 下载离线 GeoIP 数据库
 ```
 
@@ -88,9 +81,6 @@ qian AS209242,1.2.3.0/24         # ASN + CIDR 混合输入
 ```bash
 qian AS209242 -w -d -s -i         # 组合使用
 qian AS209242 -c --cfst-count 20  # 扫描后自动 cfst 测速取前 20
-qian AS209242 --self-speed --top-k 5 --bandwidth 30  # 自实现测速，RTT Top5，带宽阈值30Mbps
-qian AS209242 --ray-check         # 扫描后对结果 IP 进行 CF-RAY 头校验
-qian AS209242 --fission --fission-depth 2  # 启用裂变发现，深度 2 轮
 qian AS209242 --skip-masscan      # 断点续扫
 qian update                       # 更新到最新版
 qian uninstall                    # 卸载
@@ -314,17 +304,19 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 
 ## 📝 更新日志
 
+### 🔖 v2.4.1
+
+- ⚡ RTT 预筛：当候选 IP 超过 cfst 上限 3 倍时，自动 TCP 并发 RTT 排序精简候选池
+- 🧹 移除实验性功能：自实现测速 (`--self-speed`)、CF-RAY 校验 (`--ray-check`)、裂变发现 (`--fission`)
+- 🧹 保留 `lib/rtt_sorter` 和 `lib/weighted_scorer` 供后续集成
+- 🧹 代码重构：消除重复模式、提取公共函数、移除未用 imports
+
 ### 🔖 v2.4.0
 
-- 🚀 新增自实现测速模块 `--self-speed`：RTT 排序 + 滑动窗口峰值速度，替代外部 cfst 二进制
-- 🔍 CF-RAY HTTP 头校验 `--ray-check`：确认 IP 路由到 Cloudflare 节点，减少非 CF 误判
-- 🔗 裂变发现模式 `--fission`：IP↔域名反查迭代扩充候选 IP 池
-- ⚡ RTT 排序 + Top-K (`--top-k`)：大批候选 IP 先并发 RTT 排序，仅保留前 K 个做带宽测试
-- 📊 综合加权排序：带宽 x3 + (1000-延迟) + (1000-HTTP延迟) + (500-抖动) 综合评分
-- 🎯 支持期望带宽阈值 (`--bandwidth`)，达到阈值提前终止测速
-- 🧩 参考 4 个开源项目技术集成（better-cloudflare-ip、CloudflareCDNFission、cfnb）
 - 🐛 修复 cfst 进度条解析脆弱性问题，增加心跳回退机制
 - 🐛 修复 install.sh 卸载删除错误路径
+- 🧹 代码重构：魔法数字集中常量、`_run_masscan_batches()` 提取、`_format_csv_line()` 去重
+- 🐳 Dockerfile 交叉编译修复 (ARG TARGETARCH + GOARCH)
 
 ### 🔖 v2.3.0
 
@@ -461,9 +453,6 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 - [e13815332] — 原作者，项目架构与核心扫描流程
 - [cmliu] — [CF-Workers-CheckProxyIP] 公共 API
 - [XIU2] — [CloudflareSpeedTest] 测速优选
-- [better-cloudflare-ip] — CF-RAY HTTP 头校验思路
-- [CloudflareCDNFission] — 裂变发现 IP↔域名反查思路
-- [cfnb] — 自实现滑动窗口峰值速度测速 + 加权排序思路
 
 [masscan]: https://github.com/robertdavidgraham/masscan
 [RIPEStat API]: https://stat.ripe.net/
@@ -472,6 +461,3 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 [CF-Workers-CheckProxyIP]: https://github.com/cmliu/CF-Workers-CheckProxyIP
 [XIU2]: https://github.com/XIU2
 [CloudflareSpeedTest]: https://github.com/XIU2/CloudflareSpeedTest
-[better-cloudflare-ip]: https://github.com/better-cloudflare-ip/better-cloudflare-ip
-[CloudflareCDNFission]: https://github.com/cloudflare-cn/CloudflareCDNFission
-[cfnb]: https://github.com/badafans/cfnb
