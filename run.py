@@ -1000,19 +1000,24 @@ def _run_cfst_speedtest(a, tag: str) -> None:
             _buffer, _all_lines, _phase, _current, _delay_total, _download_total
         )
 
-        # 心跳回退：如果一段时间没有收到进度更新，使用时间估算
+        # 心跳计数
         if not _updated:
             _heartbeat_count += 1
         else:
-            _last_update = time.time()
+            _heartbeat_count = 0
+
+        # 延迟阶段达到 100% 后连续无更新，强制切到下载阶段
+        if _phase == "delay" and _current >= _delay_total and _heartbeat_count > 5:
+            _phase = "download"
+            _current = 0
             _heartbeat_count = 0
 
         _elapsed = time.time() - _start_time
         _pct = _compute_cfst_progress(_phase, _current, _delay_total, _download_total)
 
-        # 如果解析不到进度，用时间估算（最多显示到 95%，避免假完成）
-        if _pct <= 1 and _heartbeat_count > CFST_HEARTBEAT_THRESHOLD:
-            _total_estimated = max(_elapsed + 30, CFST_MIN_ESTIMATED_SECONDS)  # 至少预估 60 秒
+        # 心跳回退：一段时间无进度更新时使用时间估算
+        if _heartbeat_count > CFST_HEARTBEAT_THRESHOLD:
+            _total_estimated = max(_elapsed * 2, 60)
             _pct = min(_elapsed / _total_estimated * 100, CFST_MAX_HEARTBEAT_PCT)
 
         if _pct > 1:
