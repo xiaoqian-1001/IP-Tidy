@@ -933,6 +933,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
         return
 
     rtt_limit = cfst_limit * 3
+    rtt_results: list = []
     if len(ips) > rtt_limit:
         from lib.rtt_sorter import rtt_sort
         print(c(f"  [RTT] 候选 IP ({len(ips)}) 过多，预筛至 {rtt_limit} 个...", C.W))
@@ -1071,6 +1072,51 @@ def _run_cfst_speedtest(a, tag: str) -> None:
         else:
             color = C.W
         print(c(f"  {rl}", color))
+
+    # ── 加权评分组合（RTT + 下载带宽） ──
+    if rtt_results:
+        from lib.weighted_scorer import weighted_sort, WeightedResult
+
+        rtt_map = {r.ip: r for r in rtt_results}
+        scored_inputs: list[WeightedResult] = []
+        for line in result_lines:
+            parts = line.split()
+            if len(parts) < 6:
+                continue
+            ip = parts[0]
+            try:
+                cfst_latency = float(parts[4].replace("ms", ""))
+            except ValueError:
+                cfst_latency = 0
+            speed_str = parts[5].lower()
+            if "mb/s" in speed_str:
+                bw_mbps = float(speed_str.replace("mb/s", ""))
+                bw_kbps = bw_mbps * 1024
+            elif "kb/s" in speed_str:
+                bw_kbps = float(speed_str.replace("kb/s", ""))
+                bw_mbps = bw_kbps / 1024
+            else:
+                bw_kbps = 0
+                bw_mbps = 0
+            rtt = rtt_map.get(ip)
+            wr = WeightedResult(
+                ip=ip, port=443,
+                peak_speed_kbps=bw_kbps,
+                bandwidth_mbps=bw_mbps,
+                rtt_avg_ms=rtt.rtt_avg_ms if rtt else cfst_latency,
+                colo="",
+                http_latency_ms=cfst_latency,
+                rtt_std_ms=rtt.rtt_std_ms if rtt else 0,
+            )
+            scored_inputs.append(wr)
+
+        scored = weighted_sort(scored_inputs)
+        print()
+        print(c(f"  ⭐ 加权评分排序（带宽×3, RTT×1, 抖动×2）Top {min(cfst_limit, len(scored))}", C.LM))
+        print(c(f"  {'IP':<18} {'延迟':>8} {'带宽':>10} {'抖动':>8} {'评分':>8}", C.W))
+        for i, s in enumerate(scored[:cfst_limit]):
+            color = C.LG if i == 0 else C.LY if i < 3 else C.W
+            print(c(f"  {s.ip:<18} {s.rtt_avg_ms:>7.1f}ms {s.bandwidth_mbps:>8.2f}M {s.rtt_std_ms:>7.1f}ms {s.score:>7.0f}", color))
 
     if result_file.exists() and result_file.stat().st_size > 0:
         print()
