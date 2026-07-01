@@ -808,6 +808,14 @@ HTTP_SERVER_PORT_RANGE_END = 9900
 CFST_READ_BUFFER_SIZE = 65536
 SIGINT_EXIT_CODE = 130
 
+MCIS_DIR = BASE / "mcis"
+MCIS_BIN = MCIS_DIR / "mcis"
+MCIS_DEFAULT_BUDGET = 3000
+MCIS_DEFAULT_CONCURRENCY = 100
+MCIS_DEFAULT_TOP = 20
+MCIS_DEFAULT_HEADS = 4
+MCIS_DEFAULT_TIMEOUT = 3
+
 
 def _ensure_cfst_binary() -> Path:
     if CFST_BIN.exists() and os.access(str(CFST_BIN), os.X_OK):
@@ -845,6 +853,28 @@ def _ensure_cfst_binary() -> Path:
     finally:
         if _tmp_path and os.path.exists(_tmp_path):
             os.unlink(_tmp_path)
+
+
+def _ensure_mcis_binary() -> Path:
+    if MCIS_BIN.exists() and os.access(str(MCIS_BIN), os.X_OK):
+        return MCIS_BIN
+
+    mcis_src = MCIS_DIR / "cmd" / "mcis"
+    if not mcis_src.exists():
+        print(c("  [MCIS] 源码目录不存在，请确保 mcis 子模块已初始化", C.LR))
+        raise FileNotFoundError(str(mcis_src))
+
+    print(c("  [MCIS] 编译 mcis 二进制...", C.W))
+    proc = subprocess.run(
+        ["go", "build", "-ldflags=-s -w", "-o", str(MCIS_BIN), "."],
+        cwd=str(mcis_src),
+        capture_output=True, text=True)
+    if proc.returncode != 0:
+        print(c(f"  [FAIL] mcis 编译失败:\n{proc.stderr}", C.LR))
+        raise RuntimeError("mcis build failed")
+    os.chmod(str(MCIS_BIN), 0o755)
+    print(c(f"  [MCIS] 已编译到 {MCIS_BIN}", C.G))
+    return MCIS_BIN
 
 
 def _parse_cfst_buffer(_buffer: bytes, _all_lines: list[str],
@@ -908,13 +938,16 @@ def _run_cfst_speedtest(a, tag: str) -> None:
 
     cfst_limit = getattr(a, "cfst_count", None) or CFST_DEFAULT_LIMIT
 
-    if not a.cfst:
+    if not a.cfst and not a.mcis:
         try:
-            ch = input(c(f"  是否进行 CloudflareSpeedTest 测速优选？({len(ips)} 个IP, y/n, 回车跳过): ", C.Y)).strip().lower()
+            ch = input(c(f"  是否进行测速优选？({len(ips)} 个IP, 1=cfst, 2=mcis, 回车跳过): ", C.Y)).strip().lower()
         except (EOFError, KeyboardInterrupt):
             ch = ""
-        if ch != "y":
-            print(c("  [已跳过] CloudflareSpeedTest 测速", C.LG))
+        if ch == "2":
+            ch = ""
+            a.mcis = True
+        if ch != "1":
+            print(c("  [已跳过] 测速优选", C.LG))
             return
         try:
             cnt = input(c(f"  取前多少条最优 IP？(默认 {CFST_DEFAULT_LIMIT}): ", C.Y)).strip()
@@ -924,6 +957,9 @@ def _run_cfst_speedtest(a, tag: str) -> None:
                 print(c(f"  无效输入，使用默认: {CFST_DEFAULT_LIMIT}", C.LY))
         except (EOFError, KeyboardInterrupt):
             pass
+    elif a.mcis:
+        # mcis 由 _run_mcis_speedtest 处理，此处不做 cfst 交互
+        return
     else:
         print(c(f"  [CFST] CloudflareSpeedTest 测速 ({len(ips)} 个IP, 取前 {cfst_limit} 条)", C.G))
 
@@ -1079,6 +1115,80 @@ def _run_cfst_speedtest(a, tag: str) -> None:
         print(c("  [CFST] 结果文件为空", C.LY))
 
 
+def _run_mcis_speedtest(a, tag: str) -> None:
+    entries = _read_verified_entries()
+    ips: set[str] = {e.split(":")[0] for e in entries}
+    if not ips:
+        return
+
+    budget = getattr(a, "mcis_budget", None) or MCIS_DEFAULT_BUDGET
+    concurrency = getattr(a, "mcis_concurrency", None) or MCIS_DEFAULT_CONCURRENCY
+    top_n = getattr(a, "mcis_top", None) or MCIS_DEFAULT_TOP
+    heads = getattr(a, "mcis_heads", None) or MCIS_DEFAULT_HEADS
+    timeout = getattr(a, "mcis_timeout", None) or MCIS_DEFAULT_TIMEOUT
+
+    aggregated: set[str] = set()
+    for ip_str in ips:
+        try:
+            net = ipaddress.ip_network(ip_str, strict=False)
+            aggregated.add(str(net.supernet(new_prefix=24)))
+        except ValueError:
+            pass
+
+    if not aggregated:
+        print(c("  [MCIS] 无法从结果 IP 中提取 CIDR", C.LR))
+        return
+
+    cidr_file = BASE / ".mcis_cidrs.txt"
+    cidr_file.write_text("\n".join(sorted(aggregated)) + "\n")
+
+    out_file = BASE / f"mcis_{tag}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+
+    try:
+        mcis_bin = _ensure_mcis_binary()
+    except Exception:
+        return
+
+    cmd = [
+        str(mcis_bin), "-v",
+        "--cidr-file", str(cidr_file),
+        "--budget", str(budget),
+        "--concurrency", str(concurrency),
+        "--top", str(top_n),
+        "--heads", str(heads),
+        "--timeout", f"{timeout}s",
+        "--out", "text",
+    ]
+
+    print(c(f"  [MCIS] 蒙特卡洛搜索 ({len(aggregated)} 段 /24 CIDR, budget={budget})", C.W))
+
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=str(BASE))
+
+    cidr_file.unlink(missing_ok=True)
+
+    if proc.returncode != 0:
+        print(c(f"  [FAIL] mcis 返回码 {proc.returncode}", C.LR))
+        if proc.stderr:
+            print(proc.stderr[-500:])
+        return
+
+    lines = [l.strip() for l in proc.stdout.split("\n") if l.strip()]
+    result_lines = [l for l in lines if re.match(r'^\s*\d+\s', l)]
+
+    if not result_lines:
+        print(c("  [MCIS] 未获得有效结果", C.LY))
+        return
+
+    out_file.write_text("\n".join(result_lines) + "\n")
+
+    print_sep("─", C.B)
+    print(c(f"  Monte Carlo IP Searcher 最优 IP ({len(result_lines)} 条, budget={budget})", C.LC))
+    for i, rl in enumerate(result_lines):
+        color = C.LG if i < 3 else C.W
+        print(c(f"  {rl}", color))
+    print()
+    print(c(f"  完整结果已保存到: {out_file.name}", C.G))
+
 
 def main() -> None:
     main_start = time.time()
@@ -1120,6 +1230,18 @@ def main() -> None:
                         help="自动运行 CloudflareSpeedTest 对结果 IP 测速优选")
     parser.add_argument("--cfst-count", metavar="N", type=int, default=CFST_DEFAULT_LIMIT,
                         help=f"cfst 取前 N 条最优 IP (默认 {CFST_DEFAULT_LIMIT})")
+    parser.add_argument("--mcis", action="store_true",
+                        help="自动运行 Monte Carlo IP Searcher 智能优选")
+    parser.add_argument("--mcis-budget", metavar="N", type=int, default=MCIS_DEFAULT_BUDGET,
+                        help=f"mcis 总探测次数 (默认 {MCIS_DEFAULT_BUDGET})")
+    parser.add_argument("--mcis-concurrency", metavar="N", type=int, default=MCIS_DEFAULT_CONCURRENCY,
+                        help=f"mcis 并发数 (默认 {MCIS_DEFAULT_CONCURRENCY})")
+    parser.add_argument("--mcis-top", metavar="N", type=int, default=MCIS_DEFAULT_TOP,
+                        help=f"mcis 输出前 N 条最优 IP (默认 {MCIS_DEFAULT_TOP})")
+    parser.add_argument("--mcis-heads", metavar="N", type=int, default=MCIS_DEFAULT_HEADS,
+                        help=f"mcis 搜索头数量 (默认 {MCIS_DEFAULT_HEADS})")
+    parser.add_argument("--mcis-timeout", metavar="S", type=int, default=MCIS_DEFAULT_TIMEOUT,
+                        help=f"mcis 单次探测超时秒数 (默认 {MCIS_DEFAULT_TIMEOUT})")
     a = parser.parse_args()
 
     if a.geo_update:
@@ -1229,7 +1351,10 @@ def main() -> None:
 
     cfst_tag = "_".join(asns) if asns else "cidr"
 
-    _run_cfst_speedtest(a, cfst_tag)
+    if a.mcis:
+        _run_mcis_speedtest(a, cfst_tag)
+    else:
+        _run_cfst_speedtest(a, cfst_tag)
 
     print_result_header(
         len(asns), cidr_count_val, total_open, cf_nodes, passed_count, v4_cidr_count,

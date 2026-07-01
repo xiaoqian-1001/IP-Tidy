@@ -34,12 +34,17 @@ warn()  { echo -e "${RED}[!]${NC} $*"; }
 
 # ── Go 版本号从 go.mod 读取 ──
 go_required_version() {
-    local mod="$PROJECT_DIR/cf-scanner-src/go.mod"
-    if [ -f "$mod" ]; then
-        grep -oP 'go \K[0-9]+\.[0-9]+(\.[0-9]+)?' "$mod" | head -1
-    else
-        echo "1.22.2"
-    fi
+    local max_ver="1.22.0"
+    for mod in "$PROJECT_DIR/cf-scanner-src/go.mod" "$PROJECT_DIR/mcis/go.mod"; do
+        if [ -f "$mod" ]; then
+            local v
+            v=$(grep -oP 'go \K[0-9]+\.[0-9]+(\.[0-9]+)?' "$mod" | head -1)
+            if [ -n "$v" ] && printf '%s\n%s\n' "$max_ver" "$v" | sort -V | tail -1 | grep -qx "$v"; then
+                max_ver="$v"
+            fi
+        fi
+    done
+    echo "$max_ver"
 }
 
 # ── 卸载 ──
@@ -72,8 +77,9 @@ do_update() {
         info "已是最新版本 $new"
     else
         info "${YELLOW}$old -> $new${NC}"
-        rm -f "$PROJECT_DIR/cf-scanner"
+        rm -f "$PROJECT_DIR/cf-scanner" "$PROJECT_DIR/mcis/mcis"
         build_cf_scanner
+        build_mcis
     fi
     echo -e "${GREEN}[OK] $new${NC}"
 }
@@ -161,6 +167,19 @@ build_cf_scanner() {
     info "cf-scanner 编译完成"
 }
 
+# ── mcis 编译 ──
+build_mcis() {
+    local src="$PROJECT_DIR/mcis/cmd/mcis"
+    if [ ! -d "$src" ]; then
+        warn "mcis 源码目录不存在，跳过编译"
+        return 0
+    fi
+    cd "$src"
+    env CGO_ENABLED=0 go build -ldflags="-s -w" -o "$PROJECT_DIR/mcis/mcis" .
+    chmod +x "$PROJECT_DIR/mcis/mcis"
+    info "mcis 编译完成"
+}
+
 # ── 安装 ──
 do_install() {
     logo
@@ -199,8 +218,11 @@ do_install() {
             warn "克隆失败，请检查网络"; exit 1; }
     fi
 
-    rm -f "$PROJECT_DIR/cf-scanner"
+    (cd "$PROJECT_DIR" && git submodule update --init --recursive --depth 1) || true
+
+    rm -f "$PROJECT_DIR/cf-scanner" "$PROJECT_DIR/mcis/mcis"
     build_cf_scanner
+    build_mcis
 
     local w="/usr/local/bin/qian"
     info "注册快捷命令 -> $w"
