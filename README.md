@@ -461,6 +461,9 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 - [e13815332] — 原作者，项目架构与核心扫描流程
 - [cmliu] — [CF-Workers-CheckProxyIP] 公共 API
 - [XIU2] — [CloudflareSpeedTest] 测速优选
+- [better-cloudflare-ip] — CF-RAY HTTP 头校验思路
+- [CloudflareCDNFission] — 裂变发现 IP↔域名反查思路
+- [cfnb] — 自实现滑动窗口峰值速度测速 + 加权排序思路
 
 [masscan]: https://github.com/robertdavidgraham/masscan
 [RIPEStat API]: https://stat.ripe.net/
@@ -469,3 +472,6 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 [CF-Workers-CheckProxyIP]: https://github.com/cmliu/CF-Workers-CheckProxyIP
 [XIU2]: https://github.com/XIU2
 [CloudflareSpeedTest]: https://github.com/XIU2/CloudflareSpeedTest
+[better-cloudflare-ip]: https://github.com/better-cloudflare-ip/better-cloudflare-ip
+[CloudflareCDNFission]: https://github.com/cloudflare-cn/CloudflareCDNFission
+[cfnb]: https://github.com/badafans/cfnb
