@@ -993,7 +993,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     result_file = BASE / f"cfst_{tag}_{ts}.csv"
 
-    print(c(f"  [CFST] 开始测速，目标取前 {cfst_limit} 条最优 IP...", C.W))
+    print(c(f"  [CFST] 测速流程已初始化，将选取综合表现最优的前 {cfst_limit} 条 IP 执行测速检测", C.W))
 
     import fcntl as _fcntl
 
