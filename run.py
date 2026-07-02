@@ -913,7 +913,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     cfst_limit = getattr(a, "cfst_count", None) or CFST_DEFAULT_LIMIT
 
     if not a.cfst:
-        ch = _safe_input(f"  是否启动测速择优流程？当前待检测 IP 总量 {len(ips)} 个，支持输入 Y 确认、N 终止，回车直接跳过。", to_lower=True)
+        ch = _safe_input(f"  是否启动测速择优流程？当前待检测 IP 总量 {len(ips)} 个（Y 确认、N 终止，回车直接跳过）：", to_lower=True)
         if ch != "y":
             print(c("  [已跳过] CloudflareSpeedTest 测速", C.LG))
             return
