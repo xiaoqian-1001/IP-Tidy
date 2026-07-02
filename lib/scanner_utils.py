@@ -11,10 +11,12 @@ import ipaddress
 import threading
 import subprocess
 import urllib.request
+import urllib.error
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional, Callable, Any
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import http.client
+import ssl as _ssl_mod
 
 BASE = Path(__file__).resolve().parent.parent
 CF_SCANNER = BASE / "cf-scanner"
@@ -391,7 +393,7 @@ def tcp_latency(ip: str, port: int, timeout: float = 5) -> int:
         lat = round((time.time() - t0) * 1000)
         s.close()
         return lat
-    except OSError:
+    except (OSError, socket.timeout):
         return 0
 
 
@@ -424,49 +426,66 @@ def ssl_create_unverified():
     return ctx
 
 
+_DOWNLOAD_CAP_BYTES = 10 * 1024 * 1024
+
+
 def cf_download(ip: str, port: str) -> float:
     best_window = 0.0
-    port_val = int(port)
+    target_port = int(port)
+    ctx = ssl_create_unverified()
     for host, url, size_mb, _label in _SPEED_TESTS:
         try:
+            path = url.split(host, 1)[1] if host in url else "/"
             timeout = 15 if size_mb < 10 else 30
-            ctx = ssl_create_unverified()
-            req = urllib.request.Request(url, headers={"Host": host})
-            resp = urllib.request.urlopen(req, timeout=timeout, context=ctx)
-            if resp.getcode() != 200:
+            sock = socket.create_connection((ip, target_port), timeout=5)
+            ssock = ctx.wrap_socket(sock, server_hostname=host)
+            ssock.settimeout(timeout)
+            conn = http.client.HTTPSConnection(host, target_port)
+            conn.sock = ssock
+            conn.request("GET", path, headers={"Host": host})
+            resp = conn.getresponse()
+            if resp.status != 200:
                 resp.read()
+                resp.close()
+                conn.close()
                 continue
 
-            window_start = time.time()
-            warmup_end = window_start + 1.0
+            warmup_end = time.time() + 1.0
+            window_start = warmup_end
             window_bytes = 0
-            peak_kbps = 0
-            chunk = resp.read(65536)
-            while chunk:
-                now = time.time()
-                if now >= warmup_end:
-                    window_bytes += len(chunk)
-                    elapsed = now - window_start
-                    if elapsed >= 1.0:
-                        kbps = (window_bytes / 1024) / elapsed
-                        if kbps > peak_kbps:
-                            peak_kbps = kbps
-                        window_bytes = 0
-                        window_start = now
+            peak_kbps = 0.0
+            total = 0
+            while True:
                 chunk = resp.read(65536)
+                if not chunk:
+                    break
+                total += len(chunk)
+                now = time.time()
+                if now < warmup_end:
+                    continue
+                window_bytes += len(chunk)
+                elapsed = now - window_start
+                if elapsed >= 1.0:
+                    kbps = (window_bytes / 1024) / elapsed
+                    if kbps > peak_kbps:
+                        peak_kbps = kbps
+                    window_bytes = 0
+                    window_start = now
+                if total >= _DOWNLOAD_CAP_BYTES:
+                    break
             resp.close()
-            # 尾窗口 ≥ 200ms 计入
+            conn.close()
             if window_bytes > 0:
                 leftover = time.time() - window_start
                 if leftover > 0.2:
                     kbps = (window_bytes / 1024) / leftover
                     if kbps > peak_kbps:
                         peak_kbps = kbps
-
-            mbps_sliding = round(peak_kbps * 8 / 1024, 2) if peak_kbps > 0 else 0
-            if mbps_sliding > best_window:
-                best_window = mbps_sliding
-        except Exception:
+            mbps = round(peak_kbps * 8 / 1024, 2)
+            if mbps > best_window:
+                best_window = mbps
+        except (OSError, socket.timeout, http.client.HTTPException,
+                _ssl_mod.SSLError, urllib.error.URLError, ValueError):
             continue
     return best_window
 

@@ -420,6 +420,7 @@ def step_speed_test(cfg: ScannerConfig) -> None:
     print(f"  IP 数: {total}")
 
     results: list[tuple[str, int]] = []
+    done = 0
     chunk_size = min(total, cfg.api_concurrency * 2)
     with ThreadPoolExecutor(max_workers=min(total, cfg.api_concurrency)) as ex:
         for chunk_start in range(0, len(entries), chunk_size):
@@ -801,9 +802,9 @@ CFST_DEFAULT_LIMIT = 15
 CFST_READ_BUFFER_SIZE = 65536
 CFST_HEARTBEAT_THRESHOLD = 10
 CFST_MAX_HEARTBEAT_PCT = 95
+CFST_MAX_SECONDS = 600
 HTTP_SERVER_PORT = 8899
 HTTP_SERVER_PORT_RANGE_END = 9900
-CFST_READ_BUFFER_SIZE = 65536
 SIGINT_EXIT_CODE = 130
 
 
@@ -946,7 +947,8 @@ def _run_cfst_speedtest(a, tag: str) -> None:
         import heapq
         from collections import defaultdict
         per_colo: dict[str, list[tuple[float, str]]] = defaultdict(list)
-        colo_top = max(1, len(cf_valid) // len({r.colo or "unknown" for r in cf_valid}) + 1)
+        colo_set = {r.colo or "unknown" for r in cf_valid}
+        colo_top = max(1, len(cf_valid) // max(len(colo_set), 1) + 1)
         for r in cf_valid:
             colo = r.colo or "unknown"
             heap = per_colo[colo]
@@ -957,7 +959,8 @@ def _run_cfst_speedtest(a, tag: str) -> None:
         ips = {ip for heap in per_colo.values() for _, ip in heap}
         print(c(f"  [RTT] CF-RAY 验证通过 {len(cf_valid)} 个，按 colo 分组保留 {len(ips)} 个", C.G))
     else:
-        ips = {r.ip for r in rtt_results if r.cf_ray}
+        ips = {r.ip for r in rtt_results}
+        print(c("  [RTT] 无 IP 通过 CF-RAY 验证，回退到全部存活 IP", C.LY))
 
     ip_file = BASE / ".cfst_ips.txt"
     ip_file.write_text("\n".join(sorted(ips)) + "\n")
@@ -994,6 +997,17 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     _heartbeat_count = 0
 
     while True:
+        if time.time() - _start_time > CFST_MAX_SECONDS:
+            print(c(f"\n  [CFST] 超时 {CFST_MAX_SECONDS}s，终止进程", C.LR))
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            proc.stdout.close()
+            write_progress_done(" | CFST 超时终止")
+            ip_file.unlink(missing_ok=True)
+            return
         if proc.poll() is not None:
             try:
                 while True:

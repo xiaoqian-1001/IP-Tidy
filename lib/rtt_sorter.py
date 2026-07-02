@@ -3,7 +3,6 @@ import time
 import ssl
 import concurrent.futures
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -59,7 +58,7 @@ def _check_one(ip: str, port: int, timeout: int = TCP_TIMEOUT) -> RttResult:
         headers = resp[:header_end].decode("utf-8", errors="replace")
         body = resp[header_end + 4:].decode("utf-8", errors="replace")
 
-        has_ray = "CF-RAY" in headers or "cf-ray" in headers
+        has_ray = any("cf-ray" in line.lower() for line in headers.splitlines())
         _, colo = _parse_trace(body if has_ray else "")
 
         return RttResult(ip=ip, port=port, rtt_ms=rtt_ms, cf_ray=has_ray, colo=colo, reachable=True)
@@ -75,6 +74,8 @@ def rtt_sort(
     port: int = 443,
     timeout: int = TCP_TIMEOUT,
 ) -> list[RttResult]:
+    if not candidates or top_k <= 0:
+        return []
     parsed: list[tuple[str, int]] = []
     for cand in candidates:
         parts = cand.split(":")
