@@ -966,11 +966,11 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     ip_file.write_text("\n".join(sorted(ips)) + "\n")
 
     # 1MB 快筛：缩小 CFST 候选池
-    screen_limit = min(len(ips), cfst_limit * 2)
+    screen_limit = cfst_limit * 2
     if len(ips) > screen_limit:
         from lib.scanner_utils import cf_download as _cf_dl
         screen_results: list[tuple[float, str]] = []
-        with ThreadPoolExecutor(max_workers=min(len(ips), 32)) as _ex:
+        with ThreadPoolExecutor(max_workers=min(len(ips), max(8, (os.cpu_count() or 4) * 4))) as _ex:
             _futs = {_ex.submit(_cf_dl, ip, "443", True): ip for ip in ips}
             for _f in as_completed(_futs):
                 _ip = _futs[_f]
