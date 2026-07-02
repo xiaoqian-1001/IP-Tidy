@@ -302,166 +302,143 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 
 ---
 
-## 📝 更新日志
+## 更新日志
 
-### 🔖 v2.6.0
+### v2.6.0
 
-- 🔬 1MB 快筛：CFST 测速前使用 1MB 文件快速预筛，候选池缩至 2xN，显著缩短测速耗时
-- 🎯 加权评分：CFST 结果按 带宽x3 + 延迟x1 加权重排，替代裸下载速度排序
-- 🛡️ CF-RAY 校验增强：大小写不敏感匹配 + 无 CF-RAY 时自动回退全部存活 IP
-- 🐛 P0 修复：`cf_download` 改用 http.client + socket 直连目标 IP，修复 urllib DNS 解析导致测速数据无效的问题
-- 🐛 修复 `step_speed_test` done 变量未初始化崩溃
-- ⏱️ cfst 进程 600s 超时兜底，防止进程 hung 卡死
-- 📈 滑动窗口测速修正：预热期正常消费数据不丢弃 + 下载 10MB 截断上限
-- 🧹 异常精确化：移除 `cf_download` 裸 `except Exception`，补 `tcp_latency` 的 `socket.timeout` 兼容
-
-<details>
-<summary>📜 历史版本</summary>
-
-### 🔖 v2.5.0
-
-- ⚡ RTT 探测优化：单次 TCP 握手复用 HTTP `/cdn-cgi/trace` 探测，提取 CF-RAY 和 colo 信息
-- 🌐 colo 区域分组：按 colo 区域最小堆保留 Top-N，提升测速候选多样性
-
-### 🔖 v2.4.1
-
-- ⚡ RTT 预筛：当候选 IP 超过 cfst 上限 3 倍时，自动 TCP 并发 RTT 排序精简候选池
-- 🧹 移除实验性功能：自实现测速 (`--self-speed`)、CF-RAY 校验 (`--ray-check`)、裂变发现 (`--fission`)
-- 🧹 保留 `lib/rtt_sorter` 和 `lib/weighted_scorer` 供后续集成
-- 🧹 代码重构：消除重复模式、提取公共函数、移除未用 imports
-
-### 🔖 v2.4.0
-
-- 🐛 修复 cfst 进度条解析脆弱性问题，增加心跳回退机制
-- 🐛 修复 install.sh 卸载删除错误路径
-- 🧹 代码重构：魔法数字集中常量、`_run_masscan_batches()` 提取、`_format_csv_line()` 去重
-- 🐳 Dockerfile 交叉编译修复 (ARG TARGETARCH + GOARCH)
-
-### 🔖 v2.3.0
-
-- 🚀 集成 CloudflareSpeedTest：扫描完成后可选对结果 IP 测速优选，输出按下载速度排序的最优 IP
-- 📊 cfst 测速支持自定义取前 N 条 (`--cfst-count`)，默认 15
-- 📈 cfst 测速实时进度条（延迟测速 20% + 下载测速 80%）含 ETA 预估
-- ⚡ `-c` / `--cfst` 一键跳过交互直接测速
-- 🎨 测速结果使用 cfst 原生表头确保列对齐，亮绿/亮黄分层着色
-- 🐳 Dockerfile 预下载 cfst 二进制
+- [新增] 1MB 快筛：CFST 测速前使用 1MB 文件快速预筛，候选池缩至 2xN，显著缩短测速耗时
+- [新增] 加权评分：CFST 结果按 带宽x3 + 延迟x1 加权重排，替代裸下载速度排序
+- [优化] CF-RAY 校验增强：大小写不敏感匹配 + 无 CF-RAY 时自动回退全部存活 IP
+- [修复] `cf_download` 改用 http.client + socket 直连目标 IP，修复 urllib DNS 解析导致测速数据无效的问题
+- [修复] `step_speed_test` done 变量未初始化崩溃
+- [优化] cfst 进程 600s 超时兜底，防止进程 hung 卡死
+- [优化] 滑动窗口测速修正：预热期正常消费数据不丢弃 + 下载 10MB 截断上限
+- [清理] 异常精确化：移除 `cf_download` 裸 Exception，补 `tcp_latency` 的 socket.timeout 兼容
 
 <details>
-<summary>📜 更早版本</summary>
+<summary>历史版本</summary>
 
-### 🔖 v2.2.5
+### v2.5.0
 
-- 🧹 Masscan XML 解析逻辑抽取为 `parse_masscan_xml()` 公共函数，消除 3 处重复代码
-- 🧹 `main()` 函数拆分为 6 个子函数，提升可维护性
-- 🧹 清理 `scanner_pipeline.py` 未使用的导入（socket, threading, ET, datetime）
-- 🧹 清理 `run.py` 未使用的导入（random, socket, threading, ET, field）
-- 🐛 修复 `random_probe_ports()` 区间轮转 bug：`% 3` -> `% 4`，第 4 区间 60001-65535 现可被访问
-- 🐛 异常处理区分 `KeyboardInterrupt`，用户取消时退出码 130
-- 🐛 Go cf-scanner ANSI 转义在非 TTY 环境不再输出控制字符
-- ⚙️ Dockerfile 工作目录 `ASNIPtest` -> `IP-Tidy`
+- [新增] RTT 探测优化：单次 TCP 握手复用 HTTP `/cdn-cgi/trace` 探测，提取 CF-RAY 和 colo 信息
+- [新增] colo 区域分组：按 colo 区域最小堆保留 Top-N，提升测速候选多样性
 
-### 🔖 v2.2.4
+### v2.4.1
 
-- 🔁 新增 `-i` / `--incremental` 增量扫描：仅扫描 ASN 新增 CIDR 段，结果与历史自动合并去重
-- 📈 扫描完成自动输出 ASCII 延迟分布直方图 + 按国家/地区地理聚合统计
-- 🖥️ 增量扫描交互提示仅在存在历史状态时显示，首次扫描不打扰
+- [新增] RTT 预筛：当候选 IP 超过 cfst 上限时，自动 TCP 并发 RTT 排序精简候选池
+- [清理] 移除实验性功能：自实现测速、CF-RAY 校验、裂变发现
+- [清理] 代码重构：消除重复模式、提取公共函数、移除未用 imports
 
-### 🔖 v2.2.3
+### v2.4.0
 
-- 🎲 新增 `-P N` / `--probe-ports`：在常规端口基础上追加 N 个随机端口探活，捕获非常规高端口反代 IP
-- 🎲 `-R` 随机端口从加权区间改为全端口范围 (1-65535) 纯随机
-- 🖥️ 交互模式支持选默认端口后追加随机端口探活
-- 🏷️ 端口模式显示优化：随机探口时显示 "默认端口+随机端口组合模式"
+- [修复] cfst 进度条解析脆弱性问题，增加心跳回退机制
+- [修复] install.sh 卸载删除错误路径
+- [清理] 代码重构：魔法数字集中常量、`_run_masscan_batches()` 提取、`_format_csv_line()` 去重
+- [优化] Dockerfile 交叉编译修复 (ARG TARGETARCH + GOARCH)
 
-### 🔖 v2.2.2
+### v2.3.0
 
-- 📡 API 精筛阶段提取 probe 三段定时（connect_ms + tls_ms + http_ms），直接填充 `网络延迟` 列，不跑速度测试也有延迟数据
-- 🏷️ 快捷命令由 `xiaoqian` 改为 `qian`
-- 🎨 颜色体系重构：10色语义化分层（粗红错误、粗黄警告、粗青标题、灰色次要、细蓝分隔）
-- 🖼️ Banner 改为 Unicode 盒子框 `┌─┐│└─┘`，标题居中
-- ⏱️ 下载服务改为 Ctrl+C 退出，修复 `input()` 在非交互终端提前退出
-- 🖍️ 下载链接改用粗品红 `C.LM` 高亮
-- 🐛 修复 `install.sh` 仓库路径 `ASNIPtest` → `IP-Tidy`
-- 🐛 修复 help 示例 `ip-tidy` → `qian`
-- 🐛 修复漏改的 `CF可用IP数量` 白色加粗和 `本步耗时` 灰色细体
+- [新增] 集成 CloudflareSpeedTest：扫描完成后可选对结果 IP 测速优选
+- [新增] cfst 测速支持自定义取前 N 条 (`--cfst-count`)，默认 15
+- [新增] cfst 测速实时进度条含 ETA 预估
+- [新增] `-c` / `--cfst` 一键跳过交互直接测速
+- [优化] Dockerfile 预下载 cfst 二进制
 
-### 🔖 v2.2.1
+<details>
+<summary>更早版本</summary>
 
-- 🏷️ 脚本标题更新为 `LITTLE MONEY ASN NSD TOOL`
-- 📝 步骤描述全面优化，更清晰的流程指引
-- 🐛 修复 `_pipeline` 后台 verify 线程重复执行导致总耗时翻倍
-- 🐛 深度挖掘 masscan 进度条实时显示修复
-- 🧹 深度挖掘移除冗余交互入口，统一走主线流程
-- 🐛 修复测速导出 CSV 下载速度列空值问题
-- ⏱️ 测速 / 深度挖掘补充 `本步耗时` 输出
-- 🎨 `write_progress` 尾部空格填充，彻底杜绝进度条残留字符
+### v2.2.5
 
-### 🔖 v2.2
+- [清理] Masscan XML 解析逻辑抽取为 `parse_masscan_xml()` 公共函数，消除 3 处重复代码
+- [清理] `main()` 函数拆分为 6 个子函数
+- [清理] 清理 `scanner_pipeline.py` 和 `run.py` 未使用的导入
+- [修复] `random_probe_ports()` 区间轮转 bug：`% 3` -> `% 4`
+- [修复] 异常处理区分 `KeyboardInterrupt`，用户取消时退出码 130
+- [修复] Go cf-scanner ANSI 转义在非 TTY 环境不再输出控制字符
+- [优化] Dockerfile 工作目录 `ASNIPtest` -> `IP-Tidy`
 
-- 📝 深度挖掘输出格式精简，匹配主流程样式
-- 🔤 全局 Masscan 首字母大写统一
-- 🎨 进度条尾部多余 `.` 号去除
-- 🧹 深度挖掘交互优化，去除冗余日志
+### v2.2.4
 
-### 🔖 v2.1.1
+- [新增] `-i` / `--incremental` 增量扫描：仅扫描 ASN 新增 CIDR 段，结果与历史自动合并去重
+- [新增] 扫描完成自动输出 ASCII 延迟分布直方图 + 地理聚合统计
 
-- ⛏️ 深度挖掘：通过所获 IP 提取 /16 CIDR 二次全流程扫描，自动扩充 IP 池
-- ⏱️ HTTP 延迟：新增 HTTP HEAD 请求延迟测量（TCP + HTTP 双协议）
-- 📊 CSV 增强：输出含 IP位置 / ASN组织列，GeoIP 自动填充
-- 🗑️ 移除 WEB 模式及相关代码（Flask 前端）
+### v2.2.3
 
-### 🔖 v2.1.0
+- [新增] `-P N` / `--probe-ports`：常规端口基础上追加 N 个随机端口探活
+- [优化] `-R` 随机端口从加权区间改为全端口范围纯随机
 
-- 🧠 智能子网探活：大 CIDR 拆 /24 抽样 TCP 探测
-- 🌍 GeoIP 状态栏显示，服务器硬件信息
-- 📡 RIPEStat ASN CIDR 解析 (7天缓存)
-- 📊 CSV 导出完整对齐 run.py 格式 (含协议列)
+### v2.2.2
 
-### 🔖 v2.0.3
+- [新增] API 精筛阶段提取 probe 三段定时，直接填充延迟列
+- [优化] 快捷命令由 `xiaoqian` 改为 `qian`
+- [优化] 颜色体系重构：10色语义化分层
+- [修复] `install.sh` 仓库路径 `ASNIPtest` -> `IP-Tidy`
+- [修复] help 示例 `ip-tidy` -> `qian`
 
-- 🐛 修复 ASN 缓存空结果导致持续解析 0 CIDR
-- 🎨 修复 print_step / print_banner 多余空行，精简输出
-- 📶 非交互模式输出 TLS 状态，不再静默运行
-- 🧠 智能子网分级 (`--smart`)：大 CIDR 拆 /24 抽样 TCP 探活
-- ⚙️ ScannerConfig 新增 smart_mode / ip_mode 字段
+### v2.2.1
 
-### 🔖 v2.0.1
+- [修复] `_pipeline` 后台 verify 线程重复执行导致总耗时翻倍
+- [修复] 深度挖掘 masscan 进度条实时显示
+- [修复] 测速导出 CSV 下载速度列空值问题
+- [优化] 测速 / 深度挖掘补充 `本步耗时` 输出
 
-- 🌍 离线 GeoIP：内置 MaxMind GeoLite2，`-g` 下载更新
+### v2.2
 
-### 🔖 v2.0.0
+- [优化] 深度挖掘输出格式精简，匹配主流程样式
 
-- 🏷️ 项目更名为 IP-Tidy (原 ASNIPtest)
-- 📥 新增 CIDR 直接输入支持 (ASN 与 CIDR 混合)
-- 🎨 终端界面 ASCII 化重构 (原生控制台色、CMD 兼容)
-- 🔍 深度扫描每批次即时反馈 + 结果合并显式对比
-- 📡 恢复 CSV HTTP 下载服务 (内网/公网双链接)
-- 🐛 masscan stderr 读取跨平台兼容 (线程方案)
+### v2.1.1
 
-### 🔖 v1.5.0
+- [新增] 深度挖掘：通过所获 IP 提取 /16 CIDR 二次全流程扫描
+- [新增] HTTP 延迟：新增 HTTP HEAD 请求延迟测量
+- [新增] CSV 增强：输出含 IP位置 / ASN组织列
+- [清理] 移除 WEB 模式及相关代码
 
-- 🔄 流式流水线：cf-scanner 与 API 精筛合并执行
-- 🔒 TLS 握手检测：cf-scanner RSS 1.4GB -> 33MB
-- 🔍 深度扫描 (`-d`)：两阶段产出最大化
-- 💾 ASN CIDR 缓存：7 天 TTL + 失败回退
-- 🔄 断点续扫 (`--skip-masscan`)
-- 📦 端口批次拆分：5000 端口/批
+### v2.1.0
 
-### 🔖 v1.4.0
+- [新增] 智能子网探活：大 CIDR 拆 /24 抽样 TCP 探测
+- [新增] GeoIP 状态栏显示，服务器硬件信息
+- [新增] RIPEStat ASN CIDR 解析 (7天缓存)
 
-- 📡 宽端口扩展：912 + 10000-65535
-- 🎲 随机端口权重优化 + 分批扫描
-- ⚡ 动态并发：CPU/内存实时监控
+### v2.0.3
 
-### 🔖 v1.3.0
+- [修复] ASN 缓存空结果导致持续解析 0 CIDR
+- [修复] print_step / print_banner 多余空行
+- [新增] 智能子网分级 (`--smart`)：大 CIDR 拆 /24 抽样 TCP 探活
 
-- 📊 masscan XML 输出解析 (syn-ack 过滤)
-- ⏱️ 多点测速 + `-w` 宽端口模式
+### v2.0.1
 
-### 🔖 v1.2.0
+- [新增] 离线 GeoIP：内置 MaxMind GeoLite2
 
-- ⚙️ ScannerConfig 数据类架构 + argparse CLI
-- 🐳 多阶段 Dockerfile + 安装脚本加固
+### v2.0.0
+
+- 项目更名为 IP-Tidy (原 ASNIPtest)
+- 新增 CIDR 直接输入支持
+- 终端界面 ASCII 化重构
+- 深度扫描每批次即时反馈 + 结果合并显式对比
+- 恢复 CSV HTTP 下载服务
+- 修复 masscan stderr 读取跨平台兼容
+
+### v1.5.0
+
+- 流式流水线：cf-scanner 与 API 精筛合并执行
+- 深度扫描 (`-d`)：两阶段产出最大化
+- ASN CIDR 缓存：7 天 TTL + 失败回退
+- 断点续扫 (`--skip-masscan`)
+
+### v1.4.0
+
+- 宽端口扩展：912 + 10000-65535
+- 动态并发：CPU/内存实时监控
+
+### v1.3.0
+
+- masscan XML 输出解析 (syn-ack 过滤)
+- 多点测速 + `-w` 宽端口模式
+
+### v1.2.0
+
+- ScannerConfig 数据类架构 + argparse CLI
+- 多阶段 Dockerfile + 安装脚本加固
 
 </details>
 
