@@ -638,7 +638,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
         if not do_speed:
             print(c("  [跳过] 全量测速", C.G))
     if not do_deep and not sys.argv[1:]:
-        ch = _safe_input("  深度扫描？(y/n, 回车跳过): ", to_lower=True)
+        ch = _safe_input("  是否启用深度扫描？（Y 确认、N 终止，回车跳过）：", to_lower=True)
         do_deep = ch == "y"
         if not do_deep:
             print(c("  [已跳过] 深度扫描 (回车自动选择)", C.G))
