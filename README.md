@@ -1,6 +1,6 @@
 <p align="center">
   <br>
-  <img src="https://img.shields.io/badge/version-2.5.0-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-2.6.0-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/python-3.8+-green?style=flat-square" alt="python">
   <img src="https://img.shields.io/badge/platform-linux%20|%20macOS%20|%20WSL2-lightgrey?style=flat-square" alt="platform">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="license">
@@ -304,15 +304,24 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 
 ## 📝 更新日志
 
+### 🔖 v2.6.0
+
+- 🔬 1MB 快筛：CFST 测速前使用 1MB 文件快速预筛，候选池缩至 2xN，显著缩短测速耗时
+- 🎯 加权评分：CFST 结果按 带宽x3 + 延迟x1 加权重排，替代裸下载速度排序
+- 🛡️ CF-RAY 校验增强：大小写不敏感匹配 + 无 CF-RAY 时自动回退全部存活 IP
+- 🐛 P0 修复：`cf_download` 改用 http.client + socket 直连目标 IP，修复 urllib DNS 解析导致测速数据无效的问题
+- 🐛 修复 `step_speed_test` done 变量未初始化崩溃
+- ⏱️ cfst 进程 600s 超时兜底，防止进程 hung 卡死
+- 📈 滑动窗口测速修正：预热期正常消费数据不丢弃 + 下载 10MB 截断上限
+- 🧹 异常精确化：移除 `cf_download` 裸 `except Exception`，补 `tcp_latency` 的 `socket.timeout` 兼容
+
+<details>
+<summary>📜 历史版本</summary>
+
 ### 🔖 v2.5.0
 
 - ⚡ RTT 探测优化：单次 TCP 握手复用 HTTP `/cdn-cgi/trace` 探测，提取 CF-RAY 和 colo 信息
-- 🛡️ CF-RAY 验证：RTT 阶段自动过滤非 Cloudflare 节点 IP
 - 🌐 colo 区域分组：按 colo 区域最小堆保留 Top-N，提升测速候选多样性
-- 📈 滑动窗口测速：`cf_download` 改用 http.client 直连 + 1s 滑动窗口峰值 + 预热期 + 10MB 截断
-- 🔬 1MB 快筛：CFST 测速前使用 1MB 文件快速预筛，候选池缩至 2xN
-- 🎯 加权评分：CFST 结果按 带宽x3 + 延迟x1 加权重排，替代裸下载速度排序
-- 🧹 移除无用 `http_latency` 调用 + 异常精确化 + cfst 600s 超时兜底
 
 ### 🔖 v2.4.1
 
@@ -453,6 +462,8 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 
 - ⚙️ ScannerConfig 数据类架构 + argparse CLI
 - 🐳 多阶段 Dockerfile + 安装脚本加固
+
+</details>
 
 </details>
 
