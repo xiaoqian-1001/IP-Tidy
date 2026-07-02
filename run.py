@@ -933,7 +933,9 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     except OSError:
         return
 
-rtt_results = rtt_sort(cands, top_k=len(cands))
+    from lib.rtt_sorter import rtt_sort
+    cands = [f"{ip}:443" for ip in ips]
+    rtt_results = rtt_sort(cands, top_k=len(cands))
 
     # CF-RAY 过滤：剔除未回传 CF-RAY 头的非 CF IP
     cf_valid = [r for r in rtt_results if r.cf_ray]
