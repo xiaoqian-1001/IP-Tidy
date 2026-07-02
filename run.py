@@ -946,17 +946,22 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     if filtered:
         print(c(f"  [RTT] 存在 {filtered} 个 IP 无法通过 CF-RAY 身份校验，识别为非 Cloudflare 官方节点，已执行过滤移除操作", C.LY))
 
-    # 按 colo 分组，每 colo 取延迟最低的 top_k 个（min-heap）
+    # 按 colo 分组，按比例分配各 colo 名额
     if cf_valid:
         import heapq
-        from collections import defaultdict
-        per_colo: dict[str, list[tuple[float, str]]] = defaultdict(list)
+        from collections import defaultdict, Counter
         colo_set = {r.colo or "unknown" for r in cf_valid}
-        colo_top = max(1, len(cf_valid) // max(len(colo_set), 1) + 1)
+        colo_counts = Counter(r.colo or "unknown" for r in cf_valid)
+        num_colos = len(colo_set)
+        total = len(cf_valid)
+        base_cap = total // num_colos + 1
+        target_pool = base_cap * num_colos
+        per_colo: dict[str, list[tuple[float, str]]] = defaultdict(list)
         for r in cf_valid:
             colo = r.colo or "unknown"
+            cap = max(1, round(target_pool * colo_counts[colo] / total))
             heap = per_colo[colo]
-            if len(heap) < colo_top:
+            if len(heap) < cap:
                 heapq.heappush(heap, (r.rtt_ms, r.ip))
             else:
                 heapq.heappushpop(heap, (r.rtt_ms, r.ip))
