@@ -940,7 +940,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     cf_valid = [r for r in rtt_results if r.cf_ray]
     filtered = len(rtt_results) - len(cf_valid)
     if filtered:
-        print(c(f"  [RTT] {filtered} 个 IP 未通过 CF-RAY 验证（非 Cloudflare 节点），已过滤", C.LY))
+        print(c(f"  [RTT] 存在 {filtered} 个 IP 无法通过 CF-RAY 身份校验，识别为非 Cloudflare 官方节点，已执行过滤移除操作", C.LY))
 
     # 按 colo 分组，每 colo 取延迟最低的 top_k 个（min-heap）
     if cf_valid:
