@@ -971,27 +971,27 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     # 1MB 快筛：缩小 CFST 候选池
     screen_limit = cfst_limit * 2
     if len(ips) > screen_limit:
-        from lib.scanner_utils import cf_download as _cf_dl
+        from lib.scanner_utils import cf_quick_probe as _cf_qp
         screen_results: list[tuple[float, str]] = []
         with ThreadPoolExecutor(max_workers=min(len(ips), max(8, (os.cpu_count() or 4) * 4))) as _ex:
-            _futs = {_ex.submit(_cf_dl, ip, "443", True): ip for ip in ips}
+            _futs = {_ex.submit(_cf_qp, ip): ip for ip in ips}
             for _f in as_completed(_futs):
                 _ip = _futs[_f]
                 try:
-                    _mbps = _f.result()
-                    if _mbps > 0:
-                        screen_results.append((_mbps, _ip))
+                    _total_ms = _f.result()
+                    if _total_ms > 0:
+                        screen_results.append((_total_ms, _ip))
                 except (OSError, RuntimeError):
                     pass
-        screen_results.sort(key=lambda x: -x[0])
+        screen_results.sort(key=lambda x: x[0])
         if not screen_results:
-            print(c("  [SCREEN] 1MB 快筛无结果，回退到 COLO 分组池", C.LY))
+            print(c("  [SCREEN] 快筛无结果，回退到 COLO 分组池", C.LY))
         elif len(screen_results) < cfst_limit:
-            print(c(f"  [SCREEN] 1MB 快筛仅 {len(screen_results)} 个可用（低于 cfst_limit={cfst_limit}），回退到 COLO 分组池", C.LY))
+            print(c(f"  [SCREEN] 快筛仅 {len(screen_results)} 个可用（低于 cfst_limit={cfst_limit}），回退到 COLO 分组池", C.LY))
         else:
             ips = {ip for _, ip in screen_results[:screen_limit]}
             skipped = len(screen_results) - len(ips)
-            print(c(f"  [SCREEN] 1MB 快筛: {len(screen_results)} 个可用 → 取前 {len(ips)} 个送入 CFST" +
+            print(c(f"  [SCREEN] HTTP 总耗时快筛: {len(screen_results)} 个可用 → 取前 {len(ips)} 个送入 CFST" +
                     (f" (跳过 {skipped} 个)" if skipped else ""), C.G))
             ip_file.write_text("\n".join(sorted(ips)) + "\n")
 
