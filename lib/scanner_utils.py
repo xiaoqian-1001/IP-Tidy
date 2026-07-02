@@ -427,40 +427,6 @@ def ssl_create_unverified():
 
 
 _DOWNLOAD_CAP_BYTES = 10 * 1024 * 1024
-_QUICK_TRACE_HOST = b"speed.cloudflare.com"
-_QUICK_TRACE_PATH = b"/cdn-cgi/trace"
-_QUICK_HTTP_REQ = (
-    b"GET " + _QUICK_TRACE_PATH + b" HTTP/1.1\r\n"
-    b"Host: " + _QUICK_TRACE_HOST + b"\r\n"
-    b"Connection: close\r\n\r\n"
-)
-
-
-def cf_quick_probe(ip: str, port: int = 443, timeout: int = 5) -> float:
-    start = time.time()
-    try:
-        sock = socket.create_connection((ip, port), timeout=timeout)
-        ctx = ssl_create_unverified()
-        ssock = ctx.wrap_socket(sock, server_hostname=_QUICK_TRACE_HOST.decode())
-        ssock.settimeout(timeout)
-        ssock.sendall(_QUICK_HTTP_REQ)
-        resp = b""
-        while True:
-            chunk = ssock.read(4096)
-            if not chunk:
-                break
-            resp += chunk
-        ssock.close()
-        header_end = resp.find(b"\r\n\r\n")
-        if header_end == -1:
-            return 0.0
-        status_line = resp.split(b"\r\n")[0]
-        if b"200" not in status_line:
-            return 0.0
-        total = round((time.time() - start) * 1000, 1)
-        return total
-    except (OSError, socket.timeout, _ssl_mod.SSLError):
-        return 0.0
 
 
 def cf_download(ip: str, port: str, quick: bool = False) -> float:
