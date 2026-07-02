@@ -933,11 +933,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     except OSError:
         return
 
-    rtt_limit = max(1, int(len(ips) * 0.4))
-    from lib.rtt_sorter import rtt_sort
-    cands = [f"{ip}:443" for ip in ips]
-    top_k = rtt_limit if len(ips) > rtt_limit else len(ips)
-    rtt_results = rtt_sort(cands, top_k=top_k)
+rtt_results = rtt_sort(cands, top_k=len(cands))
 
     # CF-RAY 过滤：剔除未回传 CF-RAY 头的非 CF IP
     cf_valid = [r for r in rtt_results if r.cf_ray]
@@ -1364,7 +1360,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
         return 0
 
     print(f"  [当前结果统计] 完成校验的有效 IP: {len(existing)} 条")
-    ch = _safe_input("  是否启用深度网段挖掘？（Y 确认、N 终止，回车跳过）：", to_lower=True)
+    ch = _safe_input("  是否启用深度网段挖掘？（Y 确认 | N 终止 | 回车跳过）：", to_lower=True)
     if ch != "y":
         print(c("  [已跳过] 深度挖掘", C.LG))
         return 0
