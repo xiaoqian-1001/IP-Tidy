@@ -360,13 +360,12 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
     result_file = BASE / "masscan_result.txt"
     all_open = _run_masscan_batches(ip_file, WIDE_PORTS, cfg.masscan_rate,
                                      "deep_result", result_file)
-    print(c(f"  深度 Masscan 完成: {len(all_open)} 开放端口", C.CY))
+    print(c(f"  深度 Masscan 端口扫描已完成 | 开放端口：{len(all_open)}", C.CY))
 
     if not all_open:
         print("  无新增开放端口")
         return len(saved)
 
-    print(c("  CF 检测中...", C.CY))
     hits, _passed = _pipeline(cfg)
 
     new_set: dict[str, str] = {}
