@@ -1143,6 +1143,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
         except (ValueError, IndexError):
             _scored.append((0, 0, rl))
     _scored.sort(key=lambda x: (-x[0], -x[1]))
+    _scored = [x for x in _scored if x[1] > 0]
     result_lines = [x[2] for x in _scored]
 
     # 重写 CFST 结果 CSV
