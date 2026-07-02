@@ -699,7 +699,7 @@ def _read_verified_entries() -> list[str]:
             if not line or line.startswith("#") or line.startswith("IP"):
                 continue
             parts = line.split(",")
-            if parts:
+            if len(parts) >= 2:
                 entries.append(f"{parts[0]}:{parts[1]}")
     return entries
 
@@ -715,8 +715,11 @@ def _safe_input(prompt: str, default: str = "", to_lower: bool = False) -> str:
     try:
         val = input(c(prompt, C.Y)).strip()
         return val.lower() if to_lower else val
-    except (EOFError, KeyboardInterrupt):
+    except EOFError:
         return default
+    except KeyboardInterrupt:
+        print(c("\n  [终止] 用户中断", C.LR))
+        sys.exit(SIGINT_EXIT_CODE)
 
 
 def _cleanup_temp_files(a) -> None:
@@ -760,7 +763,7 @@ def _generate_csv(verified_file: Path, asns: list[str], a,
             if line.count(",") >= 8:
                 parsed.append(line)
 
-    with open(csv_path, "w") as f:
+    with open(csv_path, "w", encoding="utf-8-sig") as f:
         f.write(_CSV_HEADER + "\n")
         for p in parsed:
             parts = p.split(",")
@@ -784,7 +787,7 @@ def _generate_csv(verified_file: Path, asns: list[str], a,
                 new_count += 1
             merged[key] = line
         merged_lines = sorted(merged.values())
-        with open(csv_path, "w") as f:
+        with open(csv_path, "w", encoding="utf-8-sig") as f:
             f.write(_CSV_HEADER + "\n")
             for p in merged_lines:
                 f.write(_format_csv_line(p.split(",")) + "\n")
@@ -843,7 +846,7 @@ def _ensure_cfst_binary() -> Path:
         print(c(f"  [FAIL] cfst 下载失败: {_e}", C.LR))
         print(c(f"  [提示] 请手动下载 cfst 并放置到 {CFST_BIN}", C.LY))
         print(c(f"  [提示] 下载地址: https://github.com/XIU2/CloudflareSpeedTest/releases", C.LY))
-        raise
+        raise OSError(f"cfst 下载失败: {_e}")
     finally:
         if _tmp_path and os.path.exists(_tmp_path):
             os.unlink(_tmp_path)
@@ -881,7 +884,7 @@ def _parse_cfst_buffer(_buffer: bytes, _all_lines: list[str],
             pass
 
         _m = re.search(r"(\d+)\s*/\s*(\d+)", _line)
-        if _m:
+        if _m and ("可用:" in _line or "延迟" in _line or "下载" in _line):
             _current = int(_m.group(1))
             _detected = int(_m.group(2))
             if _phase == "delay":
@@ -896,13 +899,13 @@ def _parse_cfst_buffer(_buffer: bytes, _all_lines: list[str],
 
 def _compute_cfst_progress(_phase: str, _current: int,
                            _delay_total: int, _download_total: int) -> float:
+    _delay_total = _delay_total or 1
+    _download_total = _download_total or 1
     _total = _delay_total + _download_total
-    if _total == 0:
-        return 0.0
     if _phase == "delay":
-        return _current / _delay_total * (_delay_total / _total * 100) if _delay_total else 0.0
+        return _current / _delay_total * (_delay_total / _total * 100)
     base = _delay_total / _total * 100
-    if _current >= _download_total or not _download_total:
+    if _current >= _download_total:
         return 100.0
     return base + _current / _download_total * (_download_total / _total * 100)
 

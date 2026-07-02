@@ -13,6 +13,7 @@ import subprocess
 import urllib.request
 import urllib.error
 import xml.etree.ElementTree as ET
+import shutil
 from pathlib import Path
 from typing import Optional, Callable, Any
 import http.client
@@ -23,7 +24,7 @@ CF_SCANNER = BASE / "cf-scanner"
 VERIFY_PY = BASE / "verify.py"
 API_URL = "https://api.090227.xyz/check"
 WIDE_PORTS = "912,22,80,443,8080,8443,2053,2083,2087,2096,10000-65535"
-MASSCAN_BIN = "/usr/local/bin/masscan"
+MASSCAN_BIN = shutil.which("masscan") or "/usr/local/bin/masscan"
 _MASSCAN_BATCH = 5000
 
 _SPEED_TESTS = [
@@ -429,12 +430,11 @@ def ssl_create_unverified():
 _DOWNLOAD_CAP_BYTES = 10 * 1024 * 1024
 
 
-def cf_download(ip: str, port: str, quick: bool = False) -> float:
+def cf_download(ip: str, port: str) -> float:
     best_window = 0.0
     target_port = int(port)
     ctx = ssl_create_unverified()
-    tests = _SPEED_TESTS[:1] if quick else _SPEED_TESTS
-    for host, url, size_mb, _label in tests:
+    for host, url, size_mb, _label in _SPEED_TESTS:
         try:
             path = url.split(host, 1)[1] if host in url else "/"
             timeout = 15 if size_mb < 10 else 30
@@ -582,49 +582,22 @@ def expand_cidrs(cidrs: list[str], max_ips: int = 5000,
     for cidr in cidrs:
         try:
             net = ipaddress.ip_network(cidr.strip(), strict=False)
-            hosts = list(net.hosts())
-            if sample and len(hosts) > 3:
-                hosts = random.sample(hosts, min(10, len(hosts)))
-            for host in hosts:
-                ips.append(str(host))
-                if len(ips) >= max_ips:
-                    return ips
+            if sample:
+                hosts = list(net.hosts())
+                for host in random.sample(hosts, min(10, len(hosts))):
+                    ips.append(str(host))
+                    if len(ips) >= max_ips:
+                        return ips
+            else:
+                for host in net.hosts():
+                    ips.append(str(host))
+                    if len(ips) >= max_ips:
+                        return ips
         except ValueError:
             ips.append(cidr.strip())
             if len(ips) >= max_ips:
                 return ips
     return ips
-
-
-def finalize_results(results: list[dict], delay_threshold: int) -> list[dict]:
-    filtered = [r for r in results
-                if r.get("latency", 0) > 0 and r["latency"] <= delay_threshold]
-    if not filtered:
-        filtered = [r for r in results if r.get("latency", 0) > 0]
-    if not filtered:
-        filtered = results
-    filtered.sort(key=lambda r: r.get("latency", 9999))
-    return filtered
-
-
-def build_dc_list(results: list[dict]) -> list[dict]:
-    dc_map: dict[str, list[dict]] = {}
-    for r in results:
-        dc = r["colo"] or "Unknown"
-        dc_map.setdefault(dc, []).append(r)
-    dc_list = []
-    for dc, items in dc_map.items():
-        lats = [i.get("latency", 9999) for i in items if i.get("latency", 0) > 0]
-        min_lat = min(lats) if lats else 0
-        dc_list.append({
-            "datacenter": dc,
-            "city": items[0].get("region", ""),
-            "country": items[0].get("country", ""),
-            "ip_count": len(items),
-            "min_latency": min_lat,
-        })
-    dc_list.sort(key=lambda d: d["min_latency"])
-    return dc_list
 
 
 def parse_targets(raw_args: list[str]) -> tuple[list[str], list[str], list[str]]:
