@@ -584,7 +584,7 @@ def _resolve_port_mode(a, cfg, sys_args: list[str]) -> bool:
                 print(f"  扫描端口: {cfg.scan_ports}")
         else:
             try:
-                probe = _safe_input("  是否追加随机端口探活：请输入探测数量（取值 1-100），回车则跳过该步骤：")
+                probe = _safe_input("  是否启用随机端口探活？启用请输入探测数量取值范围1-100（回车跳过）：")
             except (EOFError, KeyboardInterrupt):
                 probe = ""
             if probe.isdigit():
