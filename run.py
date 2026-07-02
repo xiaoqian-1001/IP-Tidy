@@ -1169,7 +1169,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
         print(c("  [SCORE] 多维度加权评分重排流程执行完毕，加权规则为带宽指标权重 3 倍、延迟指标权重 1 倍", C.G))
 
     print_sep("─", C.B)
-    print(c(f"  CloudflareSpeedTest 最优 IP（按加权评分排序，共 {len(result_lines)} 条）", C.LC))
+    print(c(f"  CloudflareSpeedTest 测速优选结果｜按加权评分排序，合计 {len(result_lines)} 条最优 IP", C.LC))
     if cfst_header:
         print(c(f"  {cfst_header}", C.W))
     for i, rl in enumerate(result_lines):
