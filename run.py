@@ -1395,8 +1395,6 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     if host:
         cmd.extend(["--host", host])
 
-    print(c(f"  [MCIS] 启动探测 (预算 {budget}, 并发 {concurrency}, TOP {top}, 下载测速 {download_top})", C.G))
-
     import fcntl as _fcntl
 
     proc = subprocess.Popen(
