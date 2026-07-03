@@ -1337,15 +1337,16 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     host = ""
 
     if not auto_mcis:
-        prefix_inp = _safe_input(f"  扩展网段维度 (默认/{prefix}): ")
-        if prefix_inp:
-            try:
-                p = int(prefix_inp.lstrip("/"))
-                if 8 <= p <= 32:
-                    prefix = p
-            except ValueError:
-                pass
-        print(c(f"  扩展为 /{prefix} CIDR", C.W))
+        if entries:
+            prefix_inp = _safe_input(f"  扩展网段维度 (默认/{prefix}): ")
+            if prefix_inp:
+                try:
+                    p = int(prefix_inp.lstrip("/"))
+                    if 8 <= p <= 32:
+                        prefix = p
+                except ValueError:
+                    pass
+            print(c(f"  扩展为 /{prefix} CIDR", C.W))
 
         budget_inp = _safe_input(f"  扫描预算 (默认{budget}): ")
         if budget_inp.isdigit() and int(budget_inp) > 0:
@@ -1367,7 +1368,10 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         if host_inp:
             host = host_inp
     else:
-        print(c(f"  运行参数：网段维度 {prefix} | 探测阈值 {budget} | 并发 {concurrency} | 保留 TOP{top} | 带宽测速 TOP{download_top}", C.W))
+        _params = f"探测阈值 {budget} | 并发 {concurrency} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
+        if entries:
+            _params = f"网段维度 {prefix} | {_params}"
+        print(c(f"  运行参数：{_params}", C.W))
 
     if entries:
         cidrs = _expand_ips_to_cidrs(entries, prefix)
