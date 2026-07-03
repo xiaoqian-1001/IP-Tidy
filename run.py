@@ -1256,10 +1256,8 @@ def _run_cfst_speedtest(a, tag: str) -> None:
 
 
 def _ensure_mcis_binary() -> Path:
-    _ver_file = MCIS_DIR / "mcis.version"
     if MCIS_BIN.exists() and os.access(str(MCIS_BIN), os.X_OK):
-        if _ver_file.exists():
-            return MCIS_BIN
+        return MCIS_BIN
 
     import platform as _platform
     import json as _json, urllib.request as _req_m
@@ -1282,11 +1280,6 @@ def _ensure_mcis_binary() -> Path:
         print(c(f"  [FAIL] 查询 GitHub API 失败: {_e}", C.LR))
         raise OSError(f"mcis 版本查询失败: {_e}")
 
-    if MCIS_BIN.exists() and _ver_file.exists():
-        _old_tag = _ver_file.read_text().strip()
-        if _old_tag == _tag:
-            return MCIS_BIN
-
     _url = f"https://github.com/Leo-Mu/montecarlo-ip-searcher/releases/download/{_tag}/mcis-{_tag}-linux-{_mcis_arch}.tar.gz"
     print(c(f"  [MCIS] 下载 mcis {_tag}", C.W))
 
@@ -1300,7 +1293,6 @@ def _ensure_mcis_binary() -> Path:
         with _tar_m.open(_tmp_path, "r:gz") as _tar:
             _tar.extract("mcis", str(MCIS_DIR))
         os.chmod(str(MCIS_BIN), 0o755)
-        _ver_file.write_text(_tag)
         print(c(f"  [MCIS] 已安装 {_tag}", C.G))
         return MCIS_BIN
     except Exception as _e:
