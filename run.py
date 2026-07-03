@@ -1508,16 +1508,20 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     for _i, _col in enumerate(_hdr):
         _cn = _col.strip().lower()
         if _cn == "ip" or "地址" in _cn:
-            _ip_col = _i
+            if _ip_col < 0:
+                _ip_col = _i
         elif "total" in _cn or "score" in _cn or "延迟" in _cn or "latency" in _cn:
             if _lat_col < 0:
                 _lat_col = _i
-        elif "speed" in _cn or "download" in _cn or "速度" in _cn or "mb" in _cn:
-            _speed_col = _i
-        elif "colo" in _cn:
-            _colo_col = _i
-        elif "prefix" in _cn or "cidr" in _cn or "网段" in _cn:
-            _prefix_col = _i
+        elif _cn in ("download_mbps", "mbps") or "速度" in _cn:
+            if _speed_col < 0:
+                _speed_col = _i
+        elif _cn == "colo":
+            if _colo_col < 0:
+                _colo_col = _i
+        elif _cn == "prefix" or "网段" in _cn:
+            if _prefix_col < 0:
+                _prefix_col = _i
 
     if _ip_col < 0:
         _ip_col = 0
@@ -1577,6 +1581,12 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
                 _city = gi.get("city", "")
         except (OSError, TypeError):
             pass
+
+        _colo = ""
+        if _colo_col >= 0 and _colo_col < len(_rw):
+            _colo = _rw[_colo_col].strip()
+        if not _colo and _country:
+            _colo = _country
 
         _line = f"{_ip},{_port},TRUE,{_colo},{_country},{_city},{_lat},{_spd},,{_proto}"
         _result_lines.append(_line)
