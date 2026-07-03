@@ -1426,7 +1426,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
             pass
 
         _text = _buffer.decode("utf-8", errors="replace")
-        _matches = list(re.finditer(r"\[(\d+)/(\d+)\]", _text))
+        _matches = list(re.finditer(r"(\d+)/(\d+)", _text))
         if _matches:
             _current = int(_matches[-1].group(1))
             _total = int(_matches[-1].group(2))
@@ -1470,6 +1470,15 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         print(c("  [MCIS] 结果文件为空或无有效数据", C.LY))
         return 0
 
+    _dl_map: dict[str, dict[str, str]] = {}
+    _dl_text = _buffer.decode("utf-8", errors="replace")
+    for _dl in re.finditer(
+        r"download:\s*rank=\d+\s+ip=(\S+)\s+ok=(\S+)\s+mbps=(\S+)\s+ms=(\S+)",
+        _dl_text,
+    ):
+        _dl_ip = _dl.group(1)
+        _dl_map[_dl_ip] = {"ok": _dl.group(2), "mbps": _dl.group(3), "ms": _dl.group(4)}
+
     _ip_col = -1
     _lat_col = -1
     _speed_col = -1
@@ -1491,7 +1500,6 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     if _lat_col < 0:
         _lat_col = 1
 
-    existing_ips = {e.split(":")[0] for e in entries}
     _display_rows: list[tuple[str, str, str]] = []
     _result_lines: list[str] = []
 
@@ -1506,19 +1514,27 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         if not _ip:
             continue
 
+        _dl = _dl_map.get(_ip)
+        if _dl and _dl["ok"] != "true":
+            continue
+
         _lat = ""
-        if _lat_col >= 0 and _lat_col < len(_rw):
+        _spd = ""
+        if _dl and _dl["ok"] == "true":
             try:
-                _lat = str(round(float(_rw[_lat_col]), 2))
+                _lat = str(round(float(_dl["ms"]), 2))
             except (ValueError, IndexError):
                 _lat = ""
-
-        _spd = ""
-        if _speed_col >= 0 and _speed_col < len(_rw):
             try:
-                _spd = str(round(float(_rw[_speed_col]), 2))
+                _spd = str(round(float(_dl["mbps"]), 2))
             except (ValueError, IndexError):
                 _spd = ""
+        else:
+            if _lat_col >= 0 and _lat_col < len(_rw):
+                try:
+                    _lat = str(round(float(_rw[_lat_col]), 2))
+                except (ValueError, IndexError):
+                    _lat = ""
 
         _colo = ""
         if _colo_col >= 0 and _colo_col < len(_rw):
@@ -1546,6 +1562,11 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         f.write(_header + "\n")
         for _line in _result_lines:
             f.write(_line + "\n")
+
+    if _dl_map:
+        _dl_ok = sum(1 for v in _dl_map.values() if v["ok"] == "true")
+        _dl_total = len(_dl_map)
+        print(c(f"  [MCIS] 下载测速: {_dl_ok}/{_dl_total} 通过 (ok=true)", C.G if _dl_ok > 0 else C.LY))
 
     if _display_rows:
         print_sep("─", C.B)
