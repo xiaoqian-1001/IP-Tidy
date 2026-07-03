@@ -1615,8 +1615,8 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     if _display_rows:
         print_sep("─", C.B)
         print(c(f"  蒙特卡洛 IP 择优探测结果｜合计获取 {len(_display_rows)} 条替换 IP", C.LC))
-        _mcis_hdr = ("  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 8, '>') +
-                     "  " + _pad_cjk("下载速度(MB/s)", 14, '>') + "  " + _pad_cjk("地区码", 8, '>') +
+        _mcis_hdr = ("  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 8, '<') +
+                     "  " + _pad_cjk("下载速度(MB/s)", 14, '<') + "  " + _pad_cjk("地区码", 8, '<') +
                      "  " + _pad_cjk("所属网段", 16, '<'))
         print(c(_mcis_hdr, C.W))
         for _i, (_ip, _lat, _spd, _prefix, _colo) in enumerate(_display_rows):
@@ -1626,8 +1626,8 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
                 _color = C.LY
             else:
                 _color = C.W
-            _line = ("  " + _pad_cjk(_ip, 18, '<') + "  " + _pad_cjk(_lat, 8, '>') +
-                     "  " + _pad_cjk(_spd, 14, '>') + "  " + _pad_cjk(_colo.upper(), 8, '>') +
+            _line = ("  " + _pad_cjk(_ip, 18, '<') + "  " + _pad_cjk(_lat, 8, '<') +
+                     "  " + _pad_cjk(_spd, 14, '<') + "  " + _pad_cjk(_colo.upper(), 8, '<') +
                      "  " + _pad_cjk(_prefix, 16, '<'))
             print(c(_line, _color))
 
