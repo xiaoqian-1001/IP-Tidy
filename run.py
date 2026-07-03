@@ -1458,8 +1458,9 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         _pct = _last_pct
         _progress_now = False
         if _dl_matches:
-            _dl_cur = len(_dl_matches)
-            _pct = min(_dl_cur / download_top * 100, 100)
+            _dl_match = _dl_matches[-1]
+            _dl_cur = min(int(_dl_match.group(1)), download_top)
+            _pct = _dl_cur / download_top * 100
             write_progress(_pct, f" | MCIS 带宽测速 ({_dl_cur}/{download_top})")
             _last_progress_time = time.time()
             _last_pct = _pct
