@@ -1374,7 +1374,6 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         print(f"  扩展: {len(entries)} IP -> {len(cidrs)} /{prefix} CIDR")
     else:
         cidrs = cidr_list
-        print(f"  使用: {len(cidrs)} 个 CIDR 网段")
 
     try:
         mcis_bin = _ensure_mcis_binary()
