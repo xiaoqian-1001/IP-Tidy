@@ -671,7 +671,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
             print(c("  [已启用] Monte Carlo IP 搜索探测", C.G))
             do_speed = False
         else:
-            print(c("  [已跳过] Monte Carlo IP 搜索探测", C.G))
+            print(c("  [已跳过] Monte Carlo IP 搜索探测", C.LY))
     if not a.incremental and not sys.argv[1:]:
         incr_tag_hint = _incr_tag(asns, v4_cidrs)
         has_state = (INCR_DIR / f"{incr_tag_hint}_cidrs.txt").exists()
@@ -1345,7 +1345,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
                     prefix = p
             except ValueError:
                 pass
-        print(f"  扩展为 /{prefix} CIDR")
+        print(c(f"  扩展为 /{prefix} CIDR", C.W))
 
         budget_inp = _safe_input(f"  扫描预算 (默认{budget}): ")
         if budget_inp.isdigit() and int(budget_inp) > 0:
@@ -1367,11 +1367,11 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         if host_inp:
             host = host_inp
     else:
-        print(f"  运行参数：网段维度 {prefix} | 探测阈值 {budget} | 并发 {concurrency} | 保留 TOP{top} | 带宽测速 TOP{download_top}")
+        print(c(f"  运行参数：网段维度 {prefix} | 探测阈值 {budget} | 并发 {concurrency} | 保留 TOP{top} | 带宽测速 TOP{download_top}", C.W))
 
     if entries:
         cidrs = _expand_ips_to_cidrs(entries, prefix)
-        print(f"  扩展: {len(entries)} IP -> {len(cidrs)} /{prefix} CIDR")
+        print(c(f"  扩展: {len(entries)} IP -> {len(cidrs)} /{prefix} CIDR", C.W))
     else:
         cidrs = cidr_list
 
@@ -1740,7 +1740,7 @@ def main() -> None:
         do_speed, do_deep, do_mcis = _interactive_choices(a, v4_cidrs, asns)
     else:
         do_speed, do_deep, do_mcis = False, False, True
-        print(c("  [MCIS] 快速模式: 跳过扫描，直接执行蒙特卡洛搜索", C.G))
+        print(c("  [MCIS] 快速模式: 跳过扫描，直接执行蒙特卡洛搜索", C.W))
     steps = _build_steps(a, cfg, asns, v4_cidrs, do_speed, do_deep, do_mcis)
     _cleanup_temp_files(a)
 
