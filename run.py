@@ -1492,8 +1492,8 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         _lat_col = 1
 
     existing_ips = {e.split(":")[0] for e in entries}
-    new_count = 0
     _display_rows: list[tuple[str, str, str]] = []
+    _result_lines: list[str] = []
 
     for _rw in _rows:
         if not _rw or len(_rw) <= _ip_col:
@@ -1503,7 +1503,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         except IndexError:
             continue
 
-        if not _ip or _ip in existing_ips:
+        if not _ip:
             continue
 
         _lat = ""
@@ -1538,18 +1538,19 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
             pass
 
         _line = f"{_ip},{_port},TRUE,{_colo},{_country},{_city},{_lat},{_spd},,{_proto}"
-
-        with open(verified_file, "a", encoding="utf-8") as f:
-            f.write(_line + "\n")
-
-        existing_ips.add(_ip)
-        new_count += 1
+        _result_lines.append(_line)
         _display_rows.append((_ip, _lat, _spd))
 
+    _header = "IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN,协议"
+    with open(verified_file, "w", encoding="utf-8") as f:
+        f.write(_header + "\n")
+        for _line in _result_lines:
+            f.write(_line + "\n")
+
     if _display_rows:
-        print_sep("\u2500", C.B)
-        print(c(f"  Monte Carlo IP \u641c\u7d22\u7ed3\u679c\uff5c\u5408\u8ba1 {len(_display_rows)} \u6761\u65b0\u589e IP", C.LC))
-        _mcis_hdr = "  " + _pad_cjk("IP \u5730\u5740", 20, '<') + "  " + _pad_cjk("\u5ef6\u8fdf(ms)", 10, '>') + "  " + _pad_cjk("\u4e0b\u8f7d\u901f\u5ea6(MB/s)", 16, '>')
+        print_sep("─", C.B)
+        print(c(f"  Monte Carlo IP 搜索结果｜合计 {len(_display_rows)} 条替换 IP", C.LC))
+        _mcis_hdr = "  " + _pad_cjk("IP 地址", 20, '<') + "  " + _pad_cjk("延迟(ms)", 10, '>') + "  " + _pad_cjk("下载速度(MB/s)", 16, '>')
         print(c(_mcis_hdr, C.W))
         for _i, (_ip, _lat, _spd) in enumerate(_display_rows):
             if _i == 0:
@@ -1561,14 +1562,15 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
             _line = "  " + _pad_cjk(_ip, 20, '<') + "  " + _pad_cjk(_lat, 10, '>') + "  " + _pad_cjk(_spd, 16, '>')
             print(c(_line, _color))
 
+    total_count = len(_result_lines)
     elapsed = int(time.time() - step_start)
     m, s = divmod(elapsed, 60)
     if m:
-        print(c(f"  [MCIS] \u65b0\u589e {new_count} \u6761 IP, \u672c\u6b65\u8017\u65f6: {m}\u5206{s}\u79d2", C.G))
+        print(c(f"  [MCIS] 探测 {total_count} 条 IP (替换原有 {len(entries)} 条), 本步耗时: {m}分{s}秒", C.G))
     else:
-        print(c(f"  [MCIS] \u65b0\u589e {new_count} \u6761 IP, \u672c\u6b65\u8017\u65f6: {elapsed}\u79d2", C.G))
+        print(c(f"  [MCIS] 探测 {total_count} 条 IP (替换原有 {len(entries)} 条), 本步耗时: {elapsed}秒", C.G))
 
-    return new_count
+    return total_count
 
 
 def main() -> None:
