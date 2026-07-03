@@ -1432,6 +1432,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     _last_progress_time = 0.0
     _last_pct = 0.0
     _prev_buf_len = 0
+    _seen_dl = False
 
     while True:
         if time.time() - _start_time > _max_seconds:
@@ -1471,6 +1472,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         _pct = _last_pct
         _progress_now = False
         if _dl_matches:
+            _seen_dl = True
             _dl_match = _dl_matches[-1]
             _dl_cur = min(int(_dl_match.group(1)), download_top)
             _pct = _dl_cur / download_top * 100
@@ -1491,8 +1493,9 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
                 _last_progress_time = time.time()
                 _last_pct = _pct
                 _progress_now = True
-        if not _progress_now and _last_pct > 0 and time.time() - _last_progress_time > 5:
-            write_progress(_last_pct, f" | MCIS 等待中...")
+        if not _progress_now and _last_pct > 0 and time.time() - _last_progress_time > 3:
+            _wait_label = "带宽测速中" if _seen_dl else "等待中"
+            write_progress(_last_pct, f" | MCIS {_wait_label}...")
 
         time.sleep(0.5)
 
