@@ -1,6 +1,6 @@
 <p align="center">
   <br>
-  <img src="https://img.shields.io/badge/version-2.6.0-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-2.7.0-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/python-3.8+-green?style=flat-square" alt="python">
   <img src="https://img.shields.io/badge/platform-linux%20|%20macOS%20|%20WSL2-lightgrey?style=flat-square" alt="platform">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="license">
@@ -20,10 +20,11 @@
 
 ## 特性
 
-| 特性 | 说明 |
+| 特征 | 说明 |
 |------|------|
 | 智能子网分级 | 大 CIDR 自动拆 /24 抽样探活，仅扫活跃子段 (`--smart`) |
 | 深度挖掘 | 通过 IP 提取 /16 CIDR 二次全流程扫描，自动扩充IP |
+| 蒙特卡洛搜索 | 通过 Monte Carlo 算法在 CIDR 网段中搜索最优 IP (`--mcis`) |
 | 离线 GeoIP | 内置 MaxMind GeoLite2，无需网络查 ISP / 地区 / ASN |
 | 多输入源 | ASN 编号 / CIDR 网段 / 混合输入，任意组合 |
 | 深度扫描 | 二阶段宽端口扫描，发现隐藏高位端口 |
@@ -68,6 +69,7 @@ qian AS209242,1.2.3.0/24         # ASN + CIDR 混合输入
 -d             # 深度扫描 (命中 IP 追加宽端口)
 -s             # 扫描后自动测速
 -c             # CloudflareSpeedTest 测速优选工具 (可配合 --cfst-count)
+--mcis         # Monte Carlo 搜索探测: 基于IP来源CIDR网段搜索最优节点
 -i             # 增量扫描 (仅扫新增 CIDR，合并历史结果)
 -r 4000        # 指定发包速率
 --smart        # 智能子网分级 (大 CIDR 自动探活)
@@ -80,6 +82,7 @@ qian AS209242,1.2.3.0/24         # ASN + CIDR 混合输入
 ```bash
 qian AS209242 -w -d -s -i         # 组合使用
 qian AS209242 -c --cfst-count 20  # 扫描后自动 cfst 测速取前 20
+qian AS209242 --mcis              # 蒙特卡洛搜索最优节点
 qian AS209242 --skip-masscan      # 断点续扫
 qian update                       # 更新到最新版
 qian uninstall                    # 卸载
@@ -134,9 +137,10 @@ graph LR
     C --> D["masscan<br/>IPv4 CIDR SYN 扫描"]
     D --> E["cf-scanner + API<br/>TLS 检测 + 精筛"]
     E --> F["IP 深度挖掘<br/>IP -> /16 CIDR 二次扫描"]
-    F --> G["深度扫描 (可选)<br/>命中 IP 追加宽端口"]
-    G --> H["延迟/带宽检测<br/>TCP + HTTP + 下载测速"]
-    H --> I["CSV 输出 + HTTP 下载"]
+    F --> G["MCIS 搜索 (可选)<br/>Monte Carlo 最优IP探测"]
+    G --> H["深度扫描 (可选)<br/>命中 IP 追加宽端口"]
+    H --> I["延迟/带宽检测<br/>TCP + HTTP + 下载测速"]
+    I --> J["CSV 输出 + HTTP 下载"]
 ```
 
 | # | 步骤 | 说明 |
@@ -146,9 +150,10 @@ graph LR
 | 3 | 基于 Masscan 执行端口扫描任务 | 自适应速率 SYN 扫描，XML 解析，仅保留 syn-ack |
 | 4 | Cloudflare IP 检测与 API 精准过滤 | Go cf-scanner TLS 握手检测 + API 二次验证 |
 | 5 | IP 深度挖掘探测 | 通过 IP 提取 /16 CIDR 二次全流程扫描 |
-| 6 | 深度扫描 | 对命中 IP 追加宽端口，两阶段产出最大化 |
-| 7 | 网络延迟/带宽速率检测 | TCP + HTTP 延迟 + 多 URL 下载测速 |
-| 8 | 输出 | 生成 CSV（含 IP位置 / ASN组织），启动 HTTP 下载服务 |
+| 6 | MCIS 蒙特卡洛搜索 (可选) | 通过 Monte Carlo 算法在 CIDR 网段中搜索最优 IP (`--mcis`) |
+| 7 | 深度扫描 | 对命中 IP 追加宽端口，两阶段产出最大化 |
+| 8 | 网络延迟/带宽速率检测 | TCP + HTTP 延迟 + 多 URL 下载测速 |
+| 9 | 输出 | 生成 CSV（含 IP位置 / ASN组织），启动 HTTP 下载服务 |
 
 ---
 
@@ -185,6 +190,29 @@ qian AS209242
 | 结果合并 | 新IP追加到 verified.txt，passed_count 自动累加 |
 
 > 无需额外参数，扫描完成后交互确认即可执行。
+
+---
+
+## MCIS 蒙特卡洛搜索 (`--mcis`)
+
+扫描完成后根据已通过 IP 提取 CIDR 网段，使用 Monte Carlo IP Searcher 在网段内搜索最优节点，自动替换原结果。
+
+```bash
+qian AS209242 --mcis
+# 交互式参数: 网段维度 / 预算 / 并发 / TOP / 下载测速数
+qian AS209242 --mcis       # 自动模式，使用默认参数
+```
+
+| 参数 | 默认值 | 说明 |
+|:--|------|------|
+| 网段维度 | /24 | 从 IP 扩展的 CIDR 前缀长度 |
+| 扫描预算 | 3000 | Monte Carlo 探测预算 |
+| 并发数 | 100 | 并行探测数 |
+| TOP | 20 | 保留最优 IP 数 |
+| 下载测速 | 5 | 实测下载速度的 IP 数 |
+| 目标域名 | speed.cloudflare.com | 下载测速目标 |
+
+> MCIS 替换 `step_speed_test`（测速步骤），结果表中直接展示延迟、下载速度和所属网段信息。
 
 ---
 
@@ -302,6 +330,17 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 ---
 
 ## 更新日志
+
+### v2.7.0
+
+- [新增] MCIS 蒙特卡洛搜索：基于已通过 IP 扩展 CIDR 网段，搜索最优节点 (`--mcis`)，替代传统测速步骤
+- [新增] 下载测速过滤：MCIS 结果仅保留 `ok=true` 的 IP（TLS/下载验证通过），自动剔除无效节点
+- [新增] 结果表增强：MCIS 和 CFST 均展示"地区码"列，MCIS 额外展示"所属网段"列
+- [优化] MCIS 自动下载二进制，无需手动安装
+- [优化] MCIS 结果完整替换原始 verified.txt，种子 IP 仅用于网段扩展
+
+<details>
+<summary>历史版本</summary>
 
 ### v2.6.0
 
@@ -442,6 +481,8 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 
 </details>
 
+</details>
+
 ---
 
 ## 鸣谢
@@ -449,6 +490,7 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 - [e13815332] -- 原作者，项目架构与核心扫描流程
 - [cmliu] -- [CF-Workers-CheckProxyIP] 公共 API
 - [XIU2] -- [CloudflareSpeedTest] 测速优选工具
+- [Leo-Mu] -- [Monte Carlo IP Searcher] 最优节点搜索
 
 [masscan]: https://github.com/robertdavidgraham/masscan
 [RIPEStat API]: https://stat.ripe.net/
@@ -457,3 +499,5 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 [CF-Workers-CheckProxyIP]: https://github.com/cmliu/CF-Workers-CheckProxyIP
 [XIU2]: https://github.com/XIU2
 [CloudflareSpeedTest]: https://github.com/XIU2/CloudflareSpeedTest
+[Leo-Mu]: https://github.com/Leo-Mu
+[Monte Carlo IP Searcher]: https://github.com/Leo-Mu/montecarlo-ip-searcher
