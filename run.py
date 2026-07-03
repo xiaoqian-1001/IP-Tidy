@@ -643,6 +643,13 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
     do_speed = a.speed
     do_deep = a.deep
     do_mcis = a.mcis
+    if not do_speed and not do_deep and not do_mcis:
+        ch = _safe_input("  是否直接执行蒙特卡洛探测（跳过扫描流程）？(y/N): ", to_lower=True)
+        if ch == "y":
+            a.mcis_only = True
+            do_mcis = True
+            print(c("  [已启用] 直接蒙特卡洛探测（跳过扫描）", C.G))
+            return do_speed, do_deep, do_mcis
     if not do_speed:
         ts = _safe_input("  是否启用全量测速？（Y 确认 | N 终止 | 回车跳过）：", to_lower=True)
         do_speed = ts == "y"
