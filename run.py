@@ -1209,13 +1209,18 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     else:
         _has_details = _sent_col >= 0 and _recv_col >= 0 and _loss_col >= 0
         if _has_details:
-            _cfst_hdr = "  " + _pad_cjk("IP 地址", 20, '<') + "  " + _pad_cjk("已发送", 6, '>') + "  " + _pad_cjk("已接收", 6, '>') + "  " + _pad_cjk("丢包率", 8, '>') + "  " + _pad_cjk("平均延迟", 8, '>') + "  " + _pad_cjk("下载速度(MB/s)", 14, '>')
+            _cfst_hdr = ("  " + _pad_cjk("IP 地址", 20, '<') + "  " + _pad_cjk("已发送", 6, '>') +
+                         "  " + _pad_cjk("已接收", 6, '>') + "  " + _pad_cjk("丢包率", 8, '>') +
+                         "  " + _pad_cjk("平均延迟", 8, '>') + "  " + _pad_cjk("下载速度(MB/s)", 14, '>') +
+                         "  " + _pad_cjk("地区码", 6, '>'))
         else:
-            _cfst_hdr = "  " + _pad_cjk("IP 地址", 20, '<') + "  " + _pad_cjk("平均延迟", 8, '>') + "  " + _pad_cjk("下载速度(MB/s)", 14, '>')
+            _cfst_hdr = ("  " + _pad_cjk("IP 地址", 20, '<') + "  " + _pad_cjk("平均延迟", 8, '>') +
+                         "  " + _pad_cjk("下载速度(MB/s)", 14, '>') + "  " + _pad_cjk("地区码", 6, '>'))
         print(c(_cfst_hdr, C.W))
         for _i, (_s, _bw, _rw) in enumerate(_scored):
             _ip = _rw[_ip_col].strip()
             _lat = float(_rw[_lat_col])
+            _colo = _rtt_map[_ip].colo if _ip in _rtt_map and hasattr(_rtt_map[_ip], 'colo') else ""
             if _i == 0:
                 _color = C.LG
             elif _i < 3:
@@ -1223,9 +1228,13 @@ def _run_cfst_speedtest(a, tag: str) -> None:
             else:
                 _color = C.W
             if _has_details:
-                _line = "  " + _pad_cjk(_ip, 20, '<') + "  " + _pad_cjk(_rw[_sent_col], 6, '>') + "  " + _pad_cjk(_rw[_recv_col], 6, '>') + "  " + _pad_cjk(_rw[_loss_col], 8, '>') + "  " + _pad_cjk(f"{_lat:.2f}", 8, '>') + "  " + _pad_cjk(f"{_bw:.2f}", 14, '>')
+                _line = ("  " + _pad_cjk(_ip, 20, '<') + "  " + _pad_cjk(_rw[_sent_col], 6, '>') +
+                         "  " + _pad_cjk(_rw[_recv_col], 6, '>') + "  " + _pad_cjk(_rw[_loss_col], 8, '>') +
+                         "  " + _pad_cjk(f"{_lat:.2f}", 8, '>') + "  " + _pad_cjk(f"{_bw:.2f}", 14, '>') +
+                         "  " + _pad_cjk(_colo.upper(), 6, '>'))
             else:
-                _line = "  " + _pad_cjk(_ip, 20, '<') + "  " + _pad_cjk(f"{_lat:.2f}", 8, '>') + "  " + _pad_cjk(f"{_bw:.2f}", 14, '>')
+                _line = ("  " + _pad_cjk(_ip, 20, '<') + "  " + _pad_cjk(f"{_lat:.2f}", 8, '>') +
+                         "  " + _pad_cjk(f"{_bw:.2f}", 14, '>') + "  " + _pad_cjk(_colo.upper(), 6, '>'))
             print(c(_line, _color))
 
     if result_file.exists() and result_file.stat().st_size > 0:
@@ -1563,7 +1572,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         _prefix = ""
         if _prefix_col >= 0 and _prefix_col < len(_rw):
             _prefix = _rw[_prefix_col].strip()
-        _display_rows.append((_ip, _lat, _spd, _prefix))
+        _display_rows.append((_ip, _lat, _spd, _prefix, _colo))
 
     _header = "IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN,协议"
     with open(verified_file, "w", encoding="utf-8") as f:
@@ -1579,19 +1588,23 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     if _display_rows:
         print_sep("─", C.B)
         print(c(f"  Monte Carlo IP 搜索结果｜合计 {len(_display_rows)} 条替换 IP", C.LC))
-        _mcis_hdr = "  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 10, '>') + "  " + _pad_cjk("下载速度(MB/s)", 14, '>') + "  " + _pad_cjk("所属网段", 16, '<')
+        _mcis_hdr = ("  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 8, '>') +
+                     "  " + _pad_cjk("下载速度(MB/s)", 14, '>') + "  " + _pad_cjk("地区码", 8, '>') +
+                     "  " + _pad_cjk("所属网段", 16, '<'))
         print(c(_mcis_hdr, C.W))
-        for _i, (_ip, _lat, _spd, _prefix) in enumerate(_display_rows):
+        for _i, (_ip, _lat, _spd, _prefix, _colo) in enumerate(_display_rows):
             if _i == 0:
                 _color = C.LG
             elif _i < 3:
                 _color = C.LY
             else:
                 _color = C.W
-            _line = "  " + _pad_cjk(_ip, 18, '<') + "  " + _pad_cjk(_lat, 10, '>') + "  " + _pad_cjk(_spd, 14, '>') + "  " + _pad_cjk(_prefix, 16, '<')
+            _line = ("  " + _pad_cjk(_ip, 18, '<') + "  " + _pad_cjk(_lat, 8, '>') +
+                     "  " + _pad_cjk(_spd, 14, '>') + "  " + _pad_cjk(_colo.upper(), 8, '>') +
+                     "  " + _pad_cjk(_prefix, 16, '<'))
             print(c(_line, _color))
 
-        _top_prefixes = list(dict.fromkeys(p for _, _, _, p in _display_rows[:5] if p))
+        _top_prefixes = list(dict.fromkeys(p for _, _, _, p, _ in _display_rows[:5] if p))
         if _top_prefixes:
             print(c(f"  前5优质IP分布网段: {', '.join(_top_prefixes)}", C.G))
 
