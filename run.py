@@ -1552,11 +1552,15 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     _speed_col = -1
     _colo_col = -1
     _prefix_col = -1
+    _ok_col = -1
     for _i, _col in enumerate(_hdr):
         _cn = _col.strip().lower()
-        if _cn == "ip" or "地址" in _cn:
+        if _cn == "ip":
             if _ip_col < 0:
                 _ip_col = _i
+        elif _cn == "ok":
+            if _ok_col < 0:
+                _ok_col = _i
         elif "total" in _cn or "score" in _cn or "延迟" in _cn or "latency" in _cn:
             if _lat_col < 0:
                 _lat_col = _i
@@ -1590,27 +1594,22 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
             continue
 
         _dl = _dl_map.get(_ip)
-        if _dl and _dl["ok"] != "true":
-            continue
+        if _ok_col >= 0 and _ok_col < len(_rw):
+            if _rw[_ok_col].strip().lower() != "true":
+                continue
 
         _lat = ""
         _spd = ""
         if _dl and _dl["ok"] == "true":
-            if _lat_col >= 0 and _lat_col < len(_rw):
-                try:
-                    _lat = str(round(float(_rw[_lat_col]), 2))
-                except (ValueError, IndexError):
-                    _lat = ""
             try:
                 _spd = str(round(float(_dl["mbps"]), 2))
             except (ValueError, IndexError):
                 _spd = ""
-        else:
-            if _lat_col >= 0 and _lat_col < len(_rw):
-                try:
-                    _lat = str(round(float(_rw[_lat_col]), 2))
-                except (ValueError, IndexError):
-                    _lat = ""
+        if _lat_col >= 0 and _lat_col < len(_rw):
+            try:
+                _lat = str(round(float(_rw[_lat_col]), 2))
+            except (ValueError, IndexError):
+                _lat = ""
 
         _colo = ""
         if _colo_col >= 0 and _colo_col < len(_rw):
