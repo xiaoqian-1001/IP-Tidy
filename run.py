@@ -862,7 +862,7 @@ def _ensure_cfst_binary() -> Path:
             os.unlink(_tmp_path)
 
 
-def _parse_cfst_buffer(_buffer: bytes, _all_lines: list[str],
+def _parse_cfst_buffer(_buffer: bytes,
                         _phase: str, _current: int,
                         _delay_total: int, _download_total: int):
     while b"\r" in _buffer or b"\n" in _buffer:
@@ -880,17 +880,12 @@ def _parse_cfst_buffer(_buffer: bytes, _all_lines: list[str],
         _line = _line_bytes.decode("utf-8", errors="replace").strip()
         if not _line:
             continue
-        _all_lines.append(_line)
 
-        # 多策略判断阶段切换，避免 cfst 格式变更导致卡死
-        _phase_changed = False
         if "下载测速" in _line:
             _phase = "download"
-            _phase_changed = True
         elif "延迟测速" in _line and _phase == "delay":
-            pass  # 已在 delay 阶段
+            pass
         elif "可用:" in _line and _phase == "delay":
-            # 延迟测速进度行含 "可用: N"
             pass
 
         _m = re.search(r"(\d+)\s*/\s*(\d+)", _line)
@@ -993,7 +988,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
 
     proc = subprocess.Popen(
         [str(cfst_bin), "-f", str(ip_file),
-         "-dn", str(len(ips)), "-p", str(cfst_limit),
+         "-p", str(cfst_limit),
          "-o", str(result_file)],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -1006,7 +1001,6 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     _fcntl.fcntl(fd, _fcntl.F_SETFL, _fl | os.O_NONBLOCK)
 
     _buffer = b""
-    _all_lines: list[str] = []
     _start_time = time.time()
     _phase = "delay"
     _current = 0
@@ -1048,7 +1042,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
             pass
 
         _buffer, _phase, _current, _delay_total, _download_total = _parse_cfst_buffer(
-            _buffer, _all_lines, _phase, _current, _delay_total, _download_total
+            _buffer, _phase, _current, _delay_total, _download_total
         )
 
         # 心跳计数
@@ -1081,7 +1075,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
         time.sleep(1.0 / max(1, len(ips) ** 0.5))
 
     _buffer, _phase, _current, _delay_total, _download_total = _parse_cfst_buffer(
-        _buffer, _all_lines, _phase, _current, _delay_total, _download_total
+        _buffer, _phase, _current, _delay_total, _download_total
     )
 
     proc.wait()
@@ -1090,94 +1084,116 @@ def _run_cfst_speedtest(a, tag: str) -> None:
 
     ip_file.unlink(missing_ok=True)
 
-    output = "\n".join(_all_lines)
-
     if proc.returncode != 0:
         print()
         print(c(f"  [FAIL] cfst 返回码 {proc.returncode}", C.LR))
         return
 
-    result_lines: list[str] = []
-    cfst_header = ""
-    in_table = False
-    for line in output.split("\n"):
-        stripped = line.strip()
-        if "IP 地址" in stripped and "已发送" in stripped:
-            in_table = True
-            _hdr_idx = stripped.find("IP 地址")
-            cfst_header = stripped[_hdr_idx:] if _hdr_idx >= 0 else stripped
-            continue
-        if in_table and re.match(r'^[\da-fA-F.:]+', stripped):
-            result_lines.append(stripped)
-        elif in_table and stripped == "":
-            in_table = False
+    import csv as _csv
 
-    if not result_lines:
-        print(c("  [CFST] 未获得有效测速结果", C.LY))
-        return
-
-    # 加权评分重排
-    _rtt_map = {r.ip: r for r in rtt_results}
-    _scored: list[tuple[float, float, str]] = []
-    for rl in result_lines:
-        parts = rl.split()
-        if len(parts) < 3:
-            _scored.append((0, 0, rl))
-            continue
-        try:
-            _ip = parts[0]
-            _lat = float(parts[-2])
-            _speed_mbs = float(parts[-1])
-            _jitter = _rtt_map[_ip].http_jitter_ms if _ip in _rtt_map else 0
-            _penalty = max(0.1, 1 + 0.01 * _lat + 0.02 * _jitter)
-            _score = _speed_mbs / _penalty
-            _scored.append((_score, _speed_mbs, rl))
-        except (ValueError, IndexError):
-            _scored.append((0, 0, rl))
-    _scored.sort(key=lambda x: (-x[0], -x[1]))
-    _scored = [x for x in _scored if x[1] > 0]
-    result_lines = [x[2] for x in _scored]
-
-    # 重写 CFST 结果 CSV
-    if result_file.exists():
-        import csv as _csv
-        _rows: list[list[str]] = []
+    _rows: list[list[str]] = []
+    _hdr: list[str] = []
+    if result_file.exists() and result_file.stat().st_size > 0:
         try:
             with open(result_file, "r", newline="", encoding="utf-8") as _f:
                 _reader = _csv.reader(_f)
-                _hdr = next(_reader, None)
-                if _hdr:
-                    _rows = list(_reader)
+                try:
+                    _hdr = next(_reader) or []
+                except StopIteration:
+                    _hdr = []
+                _rows = list(_reader)
         except (OSError, _csv.Error):
             _rows = []
-        if _rows:
-            _ordered: dict[str, list[str]] = {}
-            for _rw in _rows:
-                if _rw:
-                    _key = _rw[0].strip()
-                    _ordered[_key] = _rw
-            with open(result_file, "w", newline="", encoding="utf-8") as _f:
-                _writer = _csv.writer(_f)
-                if _hdr:
-                    _writer.writerow(_hdr)
-                for _s, _bw, rl in _scored:
-                    _key = rl.split()[0] if rl.split() else ""
-                    if _key in _ordered:
-                        _writer.writerow(_ordered[_key])
-        print(c("  [SCORE] 加权评分重排完毕，公式: speed / (1 + 0.01*latency + 0.02*jitter)", C.G))
+
+    if not _rows:
+        print(c("  [CFST] 结果文件为空或无有效数据", C.LY))
+        return
+
+    _ip_col = -1
+    _lat_col = -1
+    _speed_col = -1
+    _sent_col = -1
+    _recv_col = -1
+    _loss_col = -1
+    for _i, _col in enumerate(_hdr):
+        _cn = _col.strip().lower()
+        if "ip" in _cn or "地址" in _cn:
+            _ip_col = _i
+        elif "已发送" in _cn or "sent" == _cn:
+            _sent_col = _i
+        elif "已接收" in _cn or "received" in _cn or "recv" == _cn:
+            _recv_col = _i
+        elif "丢包" in _cn or "loss" in _cn:
+            _loss_col = _i
+        elif "延迟" in _cn or "latency" in _cn or "rtt" in _cn:
+            _lat_col = _i
+        elif "速度" in _cn or "speed" in _cn or "mb/s" in _cn or "download" in _cn:
+            _speed_col = _i
+    if _ip_col < 0:
+        _ip_col = 0
+    if _lat_col < 0:
+        _lat_col = 5
+    if _speed_col < 0:
+        _speed_col = 6
+
+    _rtt_map = {r.ip: r for r in rtt_results}
+    _scored: list[tuple[float, float, list[str]]] = []
+    for _rw in _rows:
+        if not _rw or len(_rw) <= max(_ip_col, _lat_col, _speed_col):
+            continue
+        try:
+            _ip = _rw[_ip_col].strip()
+            _lat = float(_rw[_lat_col])
+            _speed_mbs = float(_rw[_speed_col])
+        except (ValueError, IndexError):
+            continue
+        _jitter = _rtt_map[_ip].http_jitter_ms if _ip in _rtt_map else 0
+        _penalty = max(0.1, 1 + 0.01 * _lat + 0.02 * _jitter)
+        _score = _speed_mbs / _penalty
+        _scored.append((_score, _speed_mbs, _rw))
+
+    _scored.sort(key=lambda x: (-x[0], -x[1]))
+    _scored = [x for x in _scored if x[1] > 0]
+
+    _ordered: dict[str, list[str]] = {}
+    for _rw in _rows:
+        if _rw:
+            _ordered[_rw[_ip_col].strip()] = _rw
+    with open(result_file, "w", newline="", encoding="utf-8") as _f:
+        _writer = _csv.writer(_f)
+        if _hdr:
+            _writer.writerow(_hdr)
+        for _s, _bw, _rw in _scored:
+            _key = _rw[_ip_col].strip()
+            if _key in _ordered:
+                _writer.writerow(_rw)
+    print(c("  [SCORE] 加权评分重排完毕，公式: speed / (1 + 0.01*latency + 0.02*jitter)", C.G))
 
     print_sep("─", C.B)
-    print(c(f"  CloudflareSpeedTest 测速优选结果｜按加权评分排序，合计 {len(result_lines)} 条最优 IP", C.LC))
-    if cfst_header:
-        print(c(f"  {cfst_header}", C.W))
-    for i, rl in enumerate(result_lines):
-        if i == 0:
-            color = C.LG
-        elif i < 3:
-            color = C.LY
+    print(c(f"  CloudflareSpeedTest 测速优选结果｜按加权评分排序，合计 {len(_scored)} 条最优 IP", C.LC))
+    if not _scored:
+        print(c("  (无下载速度 > 0 的 IP，可能网络环境不稳定或 CFST 参数需调整)", C.LY))
+    else:
+        _has_details = _sent_col >= 0 and _recv_col >= 0 and _loss_col >= 0
+        if _has_details:
+            _cfst_hdr = f"  {'IP 地址':<20s}  {'已发送':>6s}  {'已接收':>6s}  {'丢包率':>8s}  {'平均延迟':>8s}  {'下载速度(MB/s)':>14s}"
         else:
-            color = C.W
-        print(c(f"  {rl}", color))
+            _cfst_hdr = f"  {'IP 地址':<20s}  {'平均延迟':>8s}  {'下载速度(MB/s)':>14s}"
+        print(c(_cfst_hdr, C.W))
+        for _i, (_s, _bw, _rw) in enumerate(_scored):
+            _ip = _rw[_ip_col].strip()
+            _lat = float(_rw[_lat_col])
+            if _i == 0:
+                _color = C.LG
+            elif _i < 3:
+                _color = C.LY
+            else:
+                _color = C.W
+            if _has_details:
+                _line = f"  {_ip:<20s}  {_rw[_sent_col]:>6s}  {_rw[_recv_col]:>6s}  {_rw[_loss_col]:>8s}  {_lat:>8.2f}  {_bw:>14.2f}"
+            else:
+                _line = f"  {_ip:<20s}  {_lat:>8.2f}  {_bw:>14.2f}"
+            print(c(_line, _color))
 
     if result_file.exists() and result_file.stat().st_size > 0:
         print()
