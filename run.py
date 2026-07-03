@@ -1320,7 +1320,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
                 print(c("  无 IP 源，跳过", C.LY))
                 return 0
         cidr_list = [l.strip() for l in cidr_file.read_text().splitlines() if l.strip()]
-        print(c(f"  [MCIS] 从 CIDR 文件读取 {len(cidr_list)} 个网段", C.W))
+        print(c(f"  [MCIS] 读取 CIDR 网段文件 | 共载入 {len(cidr_list)} 条网段", C.W))
 
     prefix = 24
     budget = 3000
