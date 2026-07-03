@@ -658,7 +658,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
         elif do_deep:
             print(c("  [已启用] 深度扫描", C.G))
     if not do_mcis:
-        ch = _safe_input("  是否启用 Monte Carlo IP 搜索探测？（Y 确认 | N 终止 | 回车跳过）：", to_lower=True)
+        ch = _safe_input("  是否启用蒙特卡洛MCIS搜索探测？（Y 确认 | N 终止 | 回车跳过）：", to_lower=True)
         do_mcis = ch == "y"
         if do_mcis:
             print(c("  [已启用] Monte Carlo IP 搜索探测", C.G))
