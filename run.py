@@ -1812,7 +1812,7 @@ def main() -> None:
     if not do_mcis:
         _run_cfst_speedtest(a, cfst_tag)
     else:
-        print(c("  [MCIS] 已通过蒙特卡洛探测获取速度数据，跳过 CFST 测速", C.G))
+        print(c("  [MCIS] 蒙特卡洛探测已采集完整速率数据，无需执行 CFST 测速，自动跳过", C.G))
 
     print_result_header(
         len(asns), cidr_count_val, total_open, cf_nodes, passed_count, v4_cidr_count,
