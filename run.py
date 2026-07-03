@@ -1611,7 +1611,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     if _dl_map:
         _dl_ok = sum(1 for v in _dl_map.values() if v["ok"] == "true")
         _dl_total = len(_dl_map)
-        print(c(f"  [MCIS] 下载测速: {_dl_ok}/{_dl_total} 通过 (ok=true)", C.G if _dl_ok > 0 else C.LY))
+        print(c(f"  [MCIS] 带宽测速 | 通过率: {_dl_ok * 100 // _dl_total}% ({_dl_ok}/{_dl_total})", C.G if _dl_ok > 0 else C.LY))
 
     if _display_rows:
         print_sep("─", C.B)
