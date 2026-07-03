@@ -10,6 +10,7 @@ import time
 import ipaddress
 import argparse
 import subprocess
+import unicodedata
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass
@@ -915,6 +916,24 @@ def _compute_cfst_progress(_phase: str, _current: int,
     return base + _current / _download_total * (_download_total / _total * 100)
 
 
+def _cjk_width(s: str) -> int:
+    w = 0
+    for c in s:
+        w += 2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1
+    return w
+
+
+def _pad_cjk(s: str, width: int, align: str = '<') -> str:
+    cur = _cjk_width(s)
+    pad = max(0, width - cur)
+    if align == '<':
+        return s + ' ' * pad
+    elif align == '>':
+        return ' ' * pad + s
+    else:
+        return ' ' * (pad // 2) + s + ' ' * (pad - pad // 2)
+
+
 def _run_cfst_speedtest(a, tag: str) -> None:
     entries = _read_verified_entries()
     ips: set[str] = {e.split(":")[0] for e in entries}
@@ -1176,9 +1195,9 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     else:
         _has_details = _sent_col >= 0 and _recv_col >= 0 and _loss_col >= 0
         if _has_details:
-            _cfst_hdr = f"  {'IP 地址':<20s}  {'已发送':>6s}  {'已接收':>6s}  {'丢包率':>8s}  {'平均延迟':>8s}  {'下载速度(MB/s)':>14s}"
+            _cfst_hdr = "  " + _pad_cjk("IP 地址", 20, '<') + "  " + _pad_cjk("已发送", 6, '>') + "  " + _pad_cjk("已接收", 6, '>') + "  " + _pad_cjk("丢包率", 8, '>') + "  " + _pad_cjk("平均延迟", 8, '>') + "  " + _pad_cjk("下载速度(MB/s)", 14, '>')
         else:
-            _cfst_hdr = f"  {'IP 地址':<20s}  {'平均延迟':>8s}  {'下载速度(MB/s)':>14s}"
+            _cfst_hdr = "  " + _pad_cjk("IP 地址", 20, '<') + "  " + _pad_cjk("平均延迟", 8, '>') + "  " + _pad_cjk("下载速度(MB/s)", 14, '>')
         print(c(_cfst_hdr, C.W))
         for _i, (_s, _bw, _rw) in enumerate(_scored):
             _ip = _rw[_ip_col].strip()
@@ -1190,9 +1209,9 @@ def _run_cfst_speedtest(a, tag: str) -> None:
             else:
                 _color = C.W
             if _has_details:
-                _line = f"  {_ip:<20s}  {_rw[_sent_col]:>6s}  {_rw[_recv_col]:>6s}  {_rw[_loss_col]:>8s}  {_lat:>8.2f}  {_bw:>14.2f}"
+                _line = "  " + _pad_cjk(_ip, 20, '<') + "  " + _pad_cjk(_rw[_sent_col], 6, '>') + "  " + _pad_cjk(_rw[_recv_col], 6, '>') + "  " + _pad_cjk(_rw[_loss_col], 8, '>') + "  " + _pad_cjk(f"{_lat:.2f}", 8, '>') + "  " + _pad_cjk(f"{_bw:.2f}", 14, '>')
             else:
-                _line = f"  {_ip:<20s}  {_lat:>8.2f}  {_bw:>14.2f}"
+                _line = "  " + _pad_cjk(_ip, 20, '<') + "  " + _pad_cjk(f"{_lat:.2f}", 8, '>') + "  " + _pad_cjk(f"{_bw:.2f}", 14, '>')
             print(c(_line, _color))
 
     if result_file.exists() and result_file.stat().st_size > 0:
