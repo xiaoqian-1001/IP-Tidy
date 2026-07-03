@@ -1256,8 +1256,10 @@ def _run_cfst_speedtest(a, tag: str) -> None:
 
 
 def _ensure_mcis_binary() -> Path:
+    _ver_file = MCIS_DIR / "mcis.version"
     if MCIS_BIN.exists() and os.access(str(MCIS_BIN), os.X_OK):
-        return MCIS_BIN
+        if _ver_file.exists():
+            return MCIS_BIN
 
     import platform as _platform
     import json as _json, urllib.request as _req_m
@@ -1271,7 +1273,7 @@ def _ensure_mcis_binary() -> Path:
         _mcis_arch = "amd64"
 
     _api_url = "https://api.github.com/repos/Leo-Mu/montecarlo-ip-searcher/releases/latest"
-    print(c(f"  [MCIS] 查询最新版本... ({_api_url})", C.W))
+    print(c(f"  [MCIS] 查询最新版本...", C.W))
     try:
         with _req_m.urlopen(_api_url, timeout=15) as _resp:
             _data = _json.loads(_resp.read().decode("utf-8"))
@@ -1280,8 +1282,13 @@ def _ensure_mcis_binary() -> Path:
         print(c(f"  [FAIL] 查询 GitHub API 失败: {_e}", C.LR))
         raise OSError(f"mcis 版本查询失败: {_e}")
 
+    if MCIS_BIN.exists() and _ver_file.exists():
+        _old_tag = _ver_file.read_text().strip()
+        if _old_tag == _tag:
+            return MCIS_BIN
+
     _url = f"https://github.com/Leo-Mu/montecarlo-ip-searcher/releases/download/{_tag}/mcis-{_tag}-linux-{_mcis_arch}.tar.gz"
-    print(c(f"  [MCIS] 下载 mcis {_tag} ({_url})", C.W))
+    print(c(f"  [MCIS] 下载 mcis {_tag}", C.W))
 
     MCIS_DIR.mkdir(parents=True, exist_ok=True)
     import tempfile as _tmp_m, tarfile as _tar_m
@@ -1293,7 +1300,8 @@ def _ensure_mcis_binary() -> Path:
         with _tar_m.open(_tmp_path, "r:gz") as _tar:
             _tar.extract("mcis", str(MCIS_DIR))
         os.chmod(str(MCIS_BIN), 0o755)
-        print(c(f"  [MCIS] 已安装 {_tag} 到 {MCIS_BIN}", C.G))
+        _ver_file.write_text(_tag)
+        print(c(f"  [MCIS] 已安装 {_tag}", C.G))
         return MCIS_BIN
     except Exception as _e:
         print(c(f"  [FAIL] mcis 下载失败: {_e}", C.LR))
@@ -1405,6 +1413,9 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     if host:
         cmd.extend(["--host", host])
 
+    for _old in BASE.glob("mcis_result_*.csv"):
+        _old.unlink(missing_ok=True)
+
     import fcntl as _fcntl
 
     proc = subprocess.Popen(
@@ -1424,6 +1435,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     _max_seconds = 600
     _last_progress_time = 0.0
     _last_pct = 0.0
+    _prev_buf_len = 0
 
     while True:
         if time.time() - _start_time > _max_seconds:
@@ -1456,7 +1468,8 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         except (BlockingIOError, OSError):
             pass
 
-        _text = _buffer.decode("utf-8", errors="replace")
+        _text = _buffer[_prev_buf_len:].decode("utf-8", errors="replace")
+        _prev_buf_len = len(_buffer)
         _p_matches = list(re.finditer(r"progress:\s*(\d+)/(\d+)", _text))
         _dl_matches = list(re.finditer(r"download:\s*rank=(\d+)", _text))
         _pct = _last_pct
@@ -1516,6 +1529,12 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
 
     if not _rows:
         print(c("  [MCIS] 结果文件为空或无有效数据", C.LY))
+        _raw_tail = _buffer.decode("utf-8", errors="replace").rsplit("\n", 6)
+        if len(_raw_tail) > 1:
+            for _l in _raw_tail[:-1]:
+                _l = _l.strip()
+                if _l:
+                    print(c(f"  [MCIS]    {_l}", C.LY))
         return 0
 
     _dl_map: dict[str, dict[str, str]] = {}
