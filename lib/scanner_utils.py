@@ -625,7 +625,7 @@ def parse_targets(raw_args: list[str]) -> tuple[list[str], list[str], list[str]]
         raw = ",".join(filtered)
     asns: list[str] = []
     v4_cidrs: list[str] = []
-    for item in raw.replace("，", ",").split(","):
+    for item in raw.replace("，", ",").replace("、", ",").split(","):
         item = item.strip()
         if not item:
             continue
