@@ -20,8 +20,6 @@ _MAXMIND_CITY: Optional[Callable] = None
 _MAXMIND_ASN: Optional[Callable] = None
 
 _GEO_DIR = Path.home() / ".config" / "ip-tidy"
-_GEO_DIR.mkdir(parents=True, exist_ok=True)
-
 _CITY_DB = _GEO_DIR / "GeoLite2-City.mmdb"
 _ASN_DB = _GEO_DIR / "GeoLite2-ASN.mmdb"
 _KEY_FILE = _GEO_DIR / "maxmind_key"
@@ -36,6 +34,7 @@ def _init() -> None:
     global _MAXMIND_ENABLED, _MAXMIND_CITY, _MAXMIND_ASN
     if _MAXMIND_ENABLED:
         return
+    _GEO_DIR.mkdir(parents=True, exist_ok=True)
     try:
         import maxminddb
         if _CITY_DB.is_file():

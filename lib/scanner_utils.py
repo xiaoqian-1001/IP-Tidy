@@ -22,7 +22,7 @@ import ssl as _ssl_mod
 BASE = Path(__file__).resolve().parent.parent
 CF_SCANNER = BASE / "cf-scanner"
 VERIFY_PY = BASE / "verify.py"
-API_URL = "https://api.090227.xyz/check"
+API_URL = os.environ.get("IP_TIDY_API_URL", "https://api.090227.xyz/check")
 WIDE_PORTS = "912,22,80,443,8080,8443,2053,2083,2087,2096,10000-65535"
 MASSCAN_BIN = shutil.which("masscan") or "/usr/local/bin/masscan"
 _MASSCAN_BATCH = 5000

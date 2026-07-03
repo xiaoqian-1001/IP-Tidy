@@ -7,7 +7,7 @@ import time
 import json
 import ipaddress
 import subprocess
-import urllib.request
+import urllib.request, urllib.error
 from pathlib import Path
 from typing import Optional, Callable, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -89,7 +89,7 @@ def resolve_asn_cidrs(asns: list[str], v4_cidrs: list[str],
             else:
                 if progress_callback:
                     progress_callback("log", f"AS{asn} -> API 返回空")
-        except Exception as e:
+        except (urllib.error.URLError, json.JSONDecodeError, ValueError) as e:
             if ck in cache:
                 entry = cache[ck]
                 all_v4.extend(entry.get("v4", []))
@@ -141,7 +141,12 @@ def run_masscan(cidr_file: Path, ports_str: str, rate: int,
                                 stdin=subprocess.DEVNULL,
                                 stderr=subprocess.PIPE, text=True, bufsize=1)
         stderr_lines = read_masscan_stderr(proc, prefix, _masscan_progress)
-        proc.wait()
+        try:
+            proc.wait(timeout=600)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            raise
 
         if proc.returncode != 0:
             err_text = "".join(stderr_lines).lower()
@@ -196,10 +201,15 @@ def run_cf_scanner(input_file: Path, output_file: Path,
                         "current": done, "total": tot, "stage": "cf-scanner TLS检测",
                     })
 
-    proc.wait()
+    try:
+        proc.wait(timeout=600)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        raise
     hits = 0
     if output_file.exists():
-        with open(output_file) as f:
+        with open(output_file, encoding="utf-8") as f:
             hits = sum(1 for _ in f)
     return hits
 
@@ -225,7 +235,7 @@ def verify_batch(entries: list[str], concurrency: int = 32,
 
     results = []
     if out.exists():
-        with open(out) as f:
+        with open(out, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#") or line.startswith("IP"):

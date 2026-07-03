@@ -85,7 +85,7 @@ def _run_masscan_batches(ip_file: Path, ports_def: str, rate: int,
     batches = split_port_batches(ports_def)
     total_ports = port_count(ports_def)
     if len(batches) > 1:
-        print(f"  端口总数 {total_ports} -> {len(batches)} 批次扫描 (~{_MASSCAN_BATCH}/批)")
+        print(c(f"  端口总数 {total_ports} -> {len(batches)} 批次扫描 (~{_MASSCAN_BATCH}/批)", C.GY))
 
     all_open: list[str] = []
     batch_total = len(batches)
@@ -113,7 +113,12 @@ def _run_masscan_batches(ip_file: Path, ports_def: str, rate: int,
                                 stdin=subprocess.DEVNULL,
                                 stderr=subprocess.PIPE, text=True, bufsize=1)
         stderr_lines = read_masscan_stderr(proc, prefix, _m_progress)
-        proc.wait()
+        try:
+            proc.wait(timeout=600)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            raise
 
         if proc.returncode != 0:
             sys.stderr.write("\n"); sys.stderr.flush()
@@ -181,7 +186,7 @@ def init_runtime() -> ScannerConfig:
         cfg.global_city = g.get("city", "")
         cfg.global_isp = g.get("isp", "")
         print(c("  [GeoIP] 离线数据库 (MaxMind GeoLite2)", C.W))
-        print(f"  地区: {cfg.global_city}, {cfg.global_country}  机构: {cfg.global_isp}")
+        print(c(f"  地区: {cfg.global_city}, {cfg.global_country}  机构: {cfg.global_isp}", C.GY))
     else:
         cfg.global_ip, cfg.global_country, cfg.global_isp, cfg.global_city = detect_isp(pub_ip)
     return cfg
@@ -191,7 +196,7 @@ def step_fetch_prefixes(cfg: ScannerConfig, asns: list[str],
                         v4_cidrs: list[str]) -> list[str]:
     all_v4 = list(v4_cidrs)
     if v4_cidrs:
-        print(f"  监测 IPv4 CIDR: {len(v4_cidrs)} 个 ({', '.join(v4_cidrs[:5])}{'...' if len(v4_cidrs) > 5 else ''})")
+        print(c(f"  监测 IPv4 CIDR: {len(v4_cidrs)} 个 ({', '.join(v4_cidrs[:5])}{'...' if len(v4_cidrs) > 5 else ''})", C.GY))
 
     def _cb(typ, data):
         if typ == "log":
@@ -223,7 +228,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
 
     if ip_file.name == "cidrs.txt":
         v4_only = []
-        with open(ip_file) as f:
+        with open(ip_file, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line and ":" not in line:
@@ -238,7 +243,7 @@ def step_masscan(cfg: ScannerConfig) -> int:
     result_file = BASE / "masscan_result.txt"
     all_open = _run_masscan_batches(ip_file, cfg.scan_ports, cfg.masscan_rate,
                                      "masscan_result", result_file)
-    print(f"  开放端口: {len(all_open)}（Syn-Ack确认）")
+    print(c(f"  开放端口: {len(all_open)}（Syn-Ack确认）", C.GY))
     step_s = int(time.time() - step_start)
     m, s = divmod(step_s, 60)
     print(c(f"  本步耗时: {m}分{s}秒" if m else f"  本步耗时: {step_s}秒", C.GY))
@@ -259,7 +264,7 @@ def _pipeline(cfg: ScannerConfig) -> tuple[int, int]:
 
     adj = adjust_concurrency(cfg.cf_concurrency, cfg.cpu)
     if adj != cfg.cf_concurrency:
-        print(f"  cf-scanner 并发: {cfg.cf_concurrency} -> {adj} (系统负载)")
+        print(c(f"  cf-scanner 并发: {cfg.cf_concurrency} -> {adj} (系统负载)", C.GY))
         cfg.cf_concurrency = adj
 
     proc = subprocess.Popen(
@@ -284,7 +289,12 @@ def _pipeline(cfg: ScannerConfig) -> tuple[int, int]:
                 last_extra = extra + stage_label
                 write_progress(pct, last_extra)
                 last_pct = pct
-    proc.wait()
+    try:
+        proc.wait(timeout=600)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        raise
 
     if proc.returncode != 0:
         sys.stderr.write("\n"); sys.stderr.flush()
@@ -292,7 +302,7 @@ def _pipeline(cfg: ScannerConfig) -> tuple[int, int]:
 
     write_progress_done(last_extra)
 
-    with open(hits_file) as f:
+    with open(hits_file, encoding="utf-8") as f:
         hits = sum(1 for _ in f)
 
     adj_api = adjust_concurrency(cfg.api_concurrency, cfg.cpu)
@@ -305,7 +315,7 @@ def _pipeline(cfg: ScannerConfig) -> tuple[int, int]:
         "--concurrent", str(adj_api),
     ], check=True)
 
-    with open(verified_file) as f:
+    with open(verified_file, encoding="utf-8") as f:
         passed = max(0, sum(1 for _ in f) - 1)
     passed = max(0, passed)
 
@@ -320,11 +330,11 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
     hits_file = BASE / "cf_hits.txt"
     verified_file = BASE / "verified.txt"
     if not hits_file.exists() or hits_file.stat().st_size == 0:
-        print("  无 CF IP，跳过")
+        print(c("  无 CF IP，跳过", C.LY))
         return 0
 
     ips: set[str] = set()
-    with open(hits_file) as f:
+    with open(hits_file, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -332,13 +342,13 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
             ips.add(line.split(":")[0] if ":" in line else line)
 
     if not ips:
-        print("  无目标 IP，跳过")
+        print(c("  无目标 IP，跳过", C.LY))
         return 0
 
     saved: dict[str, str] = {}
     saved_header = _CSV_HEADER
     if verified_file.exists() and verified_file.stat().st_size > 0:
-        with open(verified_file) as f:
+        with open(verified_file, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#"):
@@ -351,8 +361,8 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
                 saved[key] = line
 
     port_count_val = port_count(WIDE_PORTS)
-    print(f"\n  深度扫描: {len(ips)} 个 IP × {port_count_val} 端口 ({cfg.masscan_rate} pps)")
-    print(f"  IP: {', '.join(sorted(ips)[:5])}{'...' if len(ips) > 5 else ''})")
+    print(c(f"\n  深度扫描: {len(ips)} 个 IP × {port_count_val} 端口 ({cfg.masscan_rate} pps)", C.W))
+    print(c(f"  IP: {', '.join(sorted(ips)[:5])}{'...' if len(ips) > 5 else ''})", C.GY))
 
     ip_file = BASE / "deep_ips.txt"
     ip_file.write_text("\n".join(sorted(ips)) + "\n")
@@ -363,14 +373,14 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
     print(c(f"  深度 Masscan 端口扫描已完成 | 开放端口：{len(all_open)}", C.CY))
 
     if not all_open:
-        print("  无新增开放端口")
+        print(c("  无新增开放端口", C.LY))
         return len(saved)
 
     hits, _passed = _pipeline(cfg)
 
     new_set: dict[str, str] = {}
     if verified_file.exists() and verified_file.stat().st_size > 0:
-        with open(verified_file) as f:
+        with open(verified_file, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#") or line.startswith("IP"):
@@ -399,24 +409,24 @@ def step_speed_test(cfg: ScannerConfig) -> None:
     step_start = time.time()
     verified_file = BASE / "verified.txt"
     if not verified_file.exists() or verified_file.stat().st_size == 0:
-        print("  无 IP，跳过")
+        print(c("  无 IP，跳过", C.LY))
         return
 
     adj = adjust_concurrency(cfg.api_concurrency, cfg.cpu)
     if adj != cfg.api_concurrency:
-        print(f"  测速并发: {cfg.api_concurrency} -> {adj} (系统负载)")
+        print(c(f"  测速并发: {cfg.api_concurrency} -> {adj} (系统负载)", C.GY))
         cfg.api_concurrency = adj
 
-    with open(verified_file) as f:
+    with open(verified_file, encoding="utf-8") as f:
         lines = [l.strip() for l in f
                  if l.strip() and not l.startswith("#")]
     if len(lines) <= 1:
-        print("  无 IP，跳过")
+        print(c("  无 IP，跳过", C.LY))
         return
 
     header, entries = lines[0], lines[1:]
     total = len(entries)
-    print(f"  IP 数: {total}")
+    print(c(f"  IP 数: {total}", C.GY))
 
     results: list[tuple[str, int]] = []
     done = 0
@@ -443,7 +453,7 @@ def step_speed_test(cfg: ScannerConfig) -> None:
                                f" | 延迟 {lat}ms  {spd}Mbps")
 
     results.sort(key=lambda x: x[1])
-    with open(verified_file, "w") as f:
+    with open(verified_file, "w", encoding="utf-8") as f:
         f.write(header + "\n")
         for row, _ in results:
             f.write(row + "\n")
@@ -458,7 +468,7 @@ def _smart_wrapper(cfg: ScannerConfig) -> list[str]:
     if not v4_file.exists():
         return []
 
-    v4_cidrs = [l.strip() for l in open(v4_file) if l.strip() and ":" not in l]
+    v4_cidrs = [l.strip() for l in open(v4_file, encoding="utf-8") if l.strip() and ":" not in l]
     if not v4_cidrs:
         return []
 
@@ -480,7 +490,7 @@ def _parse_custom_port(args: list[str]) -> Optional[str]:
 
 def _print_visualization(csv_path: Path) -> None:
     entries: list[str] = []
-    with open(csv_path) as f:
+    with open(csv_path, encoding="utf-8") as f:
         next(f)
         for line in f:
             line = line.strip()
@@ -693,7 +703,7 @@ def _read_verified_entries() -> list[str]:
     if not verified_file.exists() or verified_file.stat().st_size == 0:
         return []
     entries: list[str] = []
-    with open(verified_file) as f:
+    with open(verified_file, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#") or line.startswith("IP"):
@@ -755,7 +765,7 @@ def _generate_csv(verified_file: Path, asns: list[str], a,
     csv_path = BASE / f"output_{tag}_{ts}.csv"
 
     parsed: list[str] = []
-    with open(verified_file) as f:
+    with open(verified_file, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#") or line.startswith("IP"):
@@ -1316,8 +1326,8 @@ def main() -> None:
             print(c("\n  [中断] 用户取消", C.LR))
             sys.exit(SIGINT_EXIT_CODE)
         except Exception as e:
-            print(c(f"  [FAIL] {e}", C.LR))
-            sys.exit(1)
+            print(c(f"  [FAIL] 步骤失败: {e}", C.LR))
+            continue
 
     verified_file = BASE / "verified.txt"
     csv_path, passed_count = _generate_csv(verified_file, asns, a,
@@ -1418,7 +1428,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
     write_progress_done(" | ETA 0分0秒 | CF检测")
 
     hits: list[str] = []
-    with open(cf_out) as f:
+    with open(cf_out, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -1436,7 +1446,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
     real_new = [r for r in new_results if f"{r['ip']}:{r.get('port','443')}" not in existing]
 
     if real_new:
-        with open(verified_file, "a") as f:
+        with open(verified_file, "a", encoding="utf-8") as f:
             for r in real_new:
                 f.write(f"{r['ip']},{r.get('port','443')},TRUE,{r.get('colo','')},"
                         f"{r.get('country','')},{r.get('region','')},,,AS{r.get('asn','')}\n")
