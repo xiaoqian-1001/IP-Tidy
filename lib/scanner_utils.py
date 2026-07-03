@@ -451,8 +451,7 @@ def cf_download(ip: str, port: str) -> float:
                 conn.close()
                 continue
 
-            warmup_end = time.time() + 1.0
-            window_start = warmup_end
+            window_start = time.time()
             window_bytes = 0
             peak_kbps = 0.0
             total = 0
@@ -461,10 +460,8 @@ def cf_download(ip: str, port: str) -> float:
                 if not chunk:
                     break
                 total += len(chunk)
-                now = time.time()
-                if now < warmup_end:
-                    continue
                 window_bytes += len(chunk)
+                now = time.time()
                 elapsed = now - window_start
                 if elapsed >= 1.0:
                     kbps = (window_bytes / 1024) / elapsed
@@ -478,10 +475,9 @@ def cf_download(ip: str, port: str) -> float:
             conn.close()
             if window_bytes > 0:
                 leftover = time.time() - window_start
-                if leftover > 0.2:
-                    kbps = (window_bytes / 1024) / leftover
-                    if kbps > peak_kbps:
-                        peak_kbps = kbps
+                kbps = (window_bytes / 1024) / leftover
+                if kbps > peak_kbps:
+                    peak_kbps = kbps
             mbps = round(peak_kbps * 8 / 1024, 2)
             if mbps > best_window:
                 best_window = mbps
