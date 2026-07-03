@@ -1375,11 +1375,6 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         host_inp = _safe_input("  测试目标域名 (如 speed.cloudflare.com, 回车使用默认): ")
         if host_inp:
             host = host_inp
-    else:
-        _params = f"探测阈值 {budget} | 并发 {concurrency} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
-        if entries:
-            _params = f"网段维度 {prefix} | {_params}"
-        print(c(f"  运行参数：{_params}", C.W))
 
     if entries:
         cidrs = _expand_ips_to_cidrs(entries, prefix)
@@ -1387,6 +1382,15 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     else:
         cidrs = cidr_list
 
+    if auto_mcis:
+        if len(cidrs) > 150:
+            budget = max(3000, min(len(cidrs) * 20, 50000))
+        _params = f"探测阈值 {budget} | 并发 {concurrency} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
+        if entries:
+            _params = f"网段维度 {prefix} | {_params}"
+        if budget > 3000:
+            _params += c(f" (网段 {len(cidrs)} 条, 已提升预算)", C.LY)
+        print(c(f"  运行参数：{_params}", C.W))
     try:
         mcis_bin = _ensure_mcis_binary()
     except OSError:
