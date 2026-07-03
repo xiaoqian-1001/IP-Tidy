@@ -685,6 +685,10 @@ def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
         ("Step 1  通过 ASN 提取 CIDR 网段", lambda: step_fetch_prefixes(cfg, asns, v4_cidrs)),
     ]
     step_num = 1
+    if a.mcis_only:
+        step_num += 1
+        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=True)))
+        return steps
     if a.smart:
         step_num += 1
         cfg.smart_mode = True
@@ -1309,10 +1313,14 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     verified_file = BASE / "verified.txt"
     entries = _read_verified_entries()
     if not entries:
-        print(c("  无 IP，跳过", C.LY))
-        return 0
-
-    print(c(f"  [MCIS] Monte Carlo IP 搜索 ({len(entries)} 个 IP 源)", C.W))
+        cidr_file = BASE / "cidrs_v4.txt"
+        if not cidr_file.exists() or cidr_file.stat().st_size == 0:
+            cidr_file = BASE / "cidrs.txt"
+            if not cidr_file.exists() or cidr_file.stat().st_size == 0:
+                print(c("  无 IP 源，跳过", C.LY))
+                return 0
+        cidr_list = [l.strip() for l in cidr_file.read_text().splitlines() if l.strip()]
+        print(c(f"  [MCIS] 从 CIDR 文件读取 {len(cidr_list)} 个网段", C.W))
 
     prefix = 24
     budget = 3000
@@ -1354,8 +1362,12 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     else:
         print(f"  参数: /{prefix} CIDR, 预算 {budget}, 并发 {concurrency}, TOP {top}, 下载测速 {download_top}")
 
-    cidrs = _expand_ips_to_cidrs(entries, prefix)
-    print(f"  扩展: {len(entries)} IP -> {len(cidrs)} /{prefix} CIDR")
+    if entries:
+        cidrs = _expand_ips_to_cidrs(entries, prefix)
+        print(f"  扩展: {len(entries)} IP -> {len(cidrs)} /{prefix} CIDR")
+    else:
+        cidrs = cidr_list
+        print(f"  使用: {len(cidrs)} 个 CIDR 网段")
 
     try:
         mcis_bin = _ensure_mcis_binary()
@@ -1611,10 +1623,14 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     total_count = len(_result_lines)
     elapsed = int(time.time() - step_start)
     m, s = divmod(elapsed, 60)
-    if m:
-        print(c(f"  [MCIS] 探测 {total_count} 条 IP (替换原有 {len(entries)} 条), 本步耗时: {m}分{s}秒", C.G))
+    if entries:
+        summary = f"探测 {total_count} 条 IP (替换原有 {len(entries)} 条)"
     else:
-        print(c(f"  [MCIS] 探测 {total_count} 条 IP (替换原有 {len(entries)} 条), 本步耗时: {elapsed}秒", C.G))
+        summary = f"探测 {total_count} 条 IP"
+    if m:
+        print(c(f"  [MCIS] {summary}, 本步耗时: {m}分{s}秒", C.G))
+    else:
+        print(c(f"  [MCIS] {summary}, 本步耗时: {elapsed}秒", C.G))
 
     return total_count
 
@@ -1629,7 +1645,8 @@ def main() -> None:
                "  qian AS209242\n"
                "  qian AS209242 -w -s\n"
                "  qian 1.2.3.0/24,5.6.7.0/24\n"
-               "  qian AS209242 -w -r 4000")
+               "  qian AS209242 -w -r 4000\n"
+               "  qian mcis AS209242")
     parser.add_argument("targets", nargs="*", help="ASN 编号 或 CIDR (可多个，空格或逗号分隔)")
     parser.add_argument("-p", "--ports", metavar="PORTS",
                         help="自定义扫描端口 (如 443 或 80,443 或 8000-9000)")
@@ -1662,6 +1679,11 @@ def main() -> None:
     parser.add_argument("--mcis", action="store_true",
                         help="启用 Monte Carlo IP 搜索探测 (替代测速)")
     a = parser.parse_args()
+    a.mcis_only = False
+    if a.targets and a.targets[0].lower() == "mcis":
+        a.mcis_only = True
+        a.mcis = True
+        a.targets = a.targets[1:]
 
     if a.geo_update:
         print_banner()
@@ -1698,8 +1720,12 @@ def main() -> None:
         cfg.masscan_rate = max(100, a.rate)
         print(f"  发包速率: {cfg.masscan_rate} pps (手动)")
 
-    _resolve_port_mode(a, cfg, sys.argv[1:])
-    do_speed, do_deep, do_mcis = _interactive_choices(a, v4_cidrs, asns)
+    if not a.mcis_only:
+        _resolve_port_mode(a, cfg, sys.argv[1:])
+        do_speed, do_deep, do_mcis = _interactive_choices(a, v4_cidrs, asns)
+    else:
+        do_speed, do_deep, do_mcis = False, False, True
+        print(c("  [MCIS] 快速模式: 跳过扫描，直接执行蒙特卡洛搜索", C.G))
     steps = _build_steps(a, cfg, asns, v4_cidrs, do_speed, do_deep, do_mcis)
     _cleanup_temp_files(a)
 
