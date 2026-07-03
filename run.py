@@ -1360,7 +1360,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         if host_inp:
             host = host_inp
     else:
-        print(f"  参数: /{prefix} CIDR, 预算 {budget}, 并发 {concurrency}, TOP {top}, 下载测速 {download_top}")
+        print(f"  运行参数：网段维度 {prefix} | 探测阈值 {budget} | 并发 {concurrency} | 保留 TOP{top} | 带宽测速 TOP{download_top}")
 
     if entries:
         cidrs = _expand_ips_to_cidrs(entries, prefix)
