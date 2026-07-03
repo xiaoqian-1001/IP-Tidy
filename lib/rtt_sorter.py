@@ -33,23 +33,34 @@ def _parse_trace(body: str) -> tuple[bool, str]:
     return bool(colo), colo
 
 
-def _do_http_get(ssock) -> tuple[float, bool, str]:
+def _do_http_get(ssock, timeout: int = TCP_TIMEOUT) -> tuple[float, bool, str]:
+    ssock.settimeout(timeout)
     t0 = time.time()
     ssock.sendall(HTTP_REQ)
-    resp = b""
-    while True:
+    buf = b""
+    while b"\r\n\r\n" not in buf:
         chunk = ssock.read(4096)
         if not chunk:
             break
-        resp += chunk
-    elapsed = (time.time() - t0) * 1000
-    header_end = resp.find(b"\r\n\r\n")
+        buf += chunk
+    header_end = buf.find(b"\r\n\r\n")
     if header_end == -1:
-        return elapsed, False, ""
-    headers = resp[:header_end].decode("utf-8", errors="replace")
-    body = resp[header_end + 4:].decode("utf-8", errors="replace")
+        return (time.time() - t0) * 1000, False, ""
+    headers = buf[:header_end].decode("utf-8", errors="replace")
+    body = buf[header_end + 4:]
+    content_length = 0
+    for line in headers.splitlines():
+        if line.lower().startswith("content-length:"):
+            content_length = int(line.split(":", 1)[1].strip())
+            break
+    while len(body) < content_length:
+        chunk = ssock.read(min(4096, content_length - len(body)))
+        if not chunk:
+            break
+        body += chunk
+    elapsed = (time.time() - t0) * 1000
     has_ray = any("cf-ray" in line.lower() for line in headers.splitlines())
-    _, colo = _parse_trace(body if has_ray else "")
+    _, colo = _parse_trace(body.decode("utf-8", errors="replace") if has_ray else "")
     return elapsed, has_ray, colo
 
 

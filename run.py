@@ -1154,7 +1154,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
                     _key = rl.split()[0] if rl.split() else ""
                     if _key in _ordered:
                         _writer.writerow(_ordered[_key])
-        print(c("  [SCORE] 多维度加权评分重排流程执行完毕，加权规则为带宽指标权重 3 倍、延迟指标权重 1 倍", C.G))
+        print(c("  [SCORE] 加权评分重排完毕，公式: speed / (1 + 0.01*latency + 0.02*jitter)", C.G))
 
     print_sep("─", C.B)
     print(c(f"  CloudflareSpeedTest 测速优选结果｜按加权评分排序，合计 {len(result_lines)} 条最优 IP", C.LC))
