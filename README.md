@@ -70,6 +70,7 @@ qian AS209242,1.2.3.0/24         # ASN + CIDR 混合输入
 -s             # 扫描后自动测速
 -c             # CloudflareSpeedTest 测速优选工具 (可配合 --cfst-count)
 --mcis         # Monte Carlo 搜索探测: 基于IP来源CIDR网段搜索最优节点
+               # 快捷模式: qian mcis <ASN/CIDR> 跳过扫描直接运行
 -i             # 增量扫描 (仅扫新增 CIDR，合并历史结果)
 -r 4000        # 指定发包速率
 --smart        # 智能子网分级 (大 CIDR 自动探活)
@@ -83,6 +84,7 @@ qian AS209242,1.2.3.0/24         # ASN + CIDR 混合输入
 qian AS209242 -w -d -s -i         # 组合使用
 qian AS209242 -c --cfst-count 20  # 扫描后自动 cfst 测速取前 20
 qian AS209242 --mcis              # 蒙特卡洛搜索最优节点
+qian mcis AS209242                # 快捷模式: 跳过扫描直接 MCIS 搜索
 qian AS209242 --skip-masscan      # 断点续扫
 qian update                       # 更新到最新版
 qian uninstall                    # 卸载
@@ -193,7 +195,7 @@ qian AS209242
 
 ---
 
-## MCIS 蒙特卡洛搜索 (`--mcis`)
+## MCIS 蒙特卡洛搜索 (`--mcis` / `qian mcis`)
 
 扫描完成后根据已通过 IP 提取 CIDR 网段，使用 Monte Carlo IP Searcher 在网段内搜索最优节点，自动替换原结果。
 
@@ -201,6 +203,8 @@ qian AS209242
 qian AS209242 --mcis
 # 交互式参数: 网段维度 / 预算 / 并发 / TOP / 下载测速数
 qian AS209242 --mcis       # 自动模式，使用默认参数
+
+qian mcis AS209242         # 快捷模式: 跳过扫描，直接解析 ASN 运行 MCIS
 ```
 
 | 参数 | 默认值 | 说明 |
@@ -213,6 +217,7 @@ qian AS209242 --mcis       # 自动模式，使用默认参数
 | 目标域名 | speed.cloudflare.com | 下载测速目标 |
 
 > MCIS 替换 `step_speed_test`（测速步骤），结果表中直接展示延迟、下载速度和所属网段信息。
+> `qian mcis <ASN/CIDR>` 快捷模式跳过 Masscan / 深度挖掘 / 交互式参数，直接解析网段运行 MCIS。
 
 ---
 

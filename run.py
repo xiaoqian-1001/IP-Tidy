@@ -1655,7 +1655,7 @@ def main() -> None:
                "  qian AS209242 -w -s\n"
                "  qian 1.2.3.0/24,5.6.7.0/24\n"
                "  qian AS209242 -w -r 4000\n"
-               "  qian mcis AS209242")
+               "  qian mcis AS209242       # 快捷模式: 跳过扫描直接 MCIS 搜索")
     parser.add_argument("targets", nargs="*", help="ASN 编号 或 CIDR (可多个，空格或逗号分隔)")
     parser.add_argument("-p", "--ports", metavar="PORTS",
                         help="自定义扫描端口 (如 443 或 80,443 或 8000-9000)")
