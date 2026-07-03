@@ -1633,9 +1633,9 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     elapsed = int(time.time() - step_start)
     m, s = divmod(elapsed, 60)
     if entries:
-        summary = f"探测 {total_count} 条 IP (替换原有 {len(entries)} 条)"
+        summary = f"本次共探测 {total_count} 条 IP (替换原有 {len(entries)} 条)"
     else:
-        summary = f"探测 {total_count} 条 IP"
+        summary = f"本次共探测 {total_count} 条 IP"
     if m:
         print(c(f"  [MCIS] {summary}, 本步耗时: {m}分{s}秒", C.G))
     else:
