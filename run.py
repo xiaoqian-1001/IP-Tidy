@@ -1240,6 +1240,8 @@ def _ensure_mcis_binary() -> Path:
         return MCIS_BIN
 
     import platform as _platform
+    import json as _json, urllib.request as _req_m
+
     _arch = _platform.machine()
     if _arch == "x86_64":
         _mcis_arch = "amd64"
@@ -1248,11 +1250,21 @@ def _ensure_mcis_binary() -> Path:
     else:
         _mcis_arch = "amd64"
 
-    _url = f"https://github.com/Leo-Mu/montecarlo-ip-searcher/releases/latest/download/mcis_linux_{_mcis_arch}.tar.gz"
-    print(c(f"  [MCIS] 下载 mcis 二进制... ({_url})", C.W))
+    _api_url = "https://api.github.com/repos/Leo-Mu/montecarlo-ip-searcher/releases/latest"
+    print(c(f"  [MCIS] 查询最新版本... ({_api_url})", C.W))
+    try:
+        with _req_m.urlopen(_api_url, timeout=15) as _resp:
+            _data = _json.loads(_resp.read().decode("utf-8"))
+        _tag = _data["tag_name"]
+    except Exception as _e:
+        print(c(f"  [FAIL] 查询 GitHub API 失败: {_e}", C.LR))
+        raise OSError(f"mcis 版本查询失败: {_e}")
+
+    _url = f"https://github.com/Leo-Mu/montecarlo-ip-searcher/releases/download/{_tag}/mcis-{_tag}-linux-{_mcis_arch}.tar.gz"
+    print(c(f"  [MCIS] 下载 mcis {_tag} ({_url})", C.W))
 
     MCIS_DIR.mkdir(parents=True, exist_ok=True)
-    import tempfile as _tmp_m, tarfile as _tar_m, urllib.request as _req_m
+    import tempfile as _tmp_m, tarfile as _tar_m
     _tmp_path = ""
     try:
         with _tmp_m.NamedTemporaryFile(suffix=".tar.gz", delete=False) as _tmp:
@@ -1261,7 +1273,7 @@ def _ensure_mcis_binary() -> Path:
         with _tar_m.open(_tmp_path, "r:gz") as _tar:
             _tar.extract("mcis", str(MCIS_DIR))
         os.chmod(str(MCIS_BIN), 0o755)
-        print(c(f"  [MCIS] 已安装到 {MCIS_BIN}", C.G))
+        print(c(f"  [MCIS] 已安装 {_tag} 到 {MCIS_BIN}", C.G))
         return MCIS_BIN
     except Exception as _e:
         print(c(f"  [FAIL] mcis 下载失败: {_e}", C.LR))
