@@ -625,7 +625,7 @@ def _resolve_port_mode(a, cfg, sys_args: list[str]) -> bool:
     return probe_added
 
 
-def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool, bool]:
+def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool, bool, bool]:
     if not a.smart and v4_cidrs:
         has_large = any(
             ipaddress.ip_network(c, strict=False).prefixlen < _SUBNET_THRESHOLD
@@ -642,6 +642,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
 
     do_speed = a.speed
     do_deep = a.deep
+    do_mcis = a.mcis
     if not do_speed:
         ts = _safe_input("  是否启用全量测速？（Y 确认 | N 终止 | 回车跳过）：", to_lower=True)
         do_speed = ts == "y"
@@ -656,6 +657,14 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
             print(c("  [跳过] 深度扫描", C.G))
         elif do_deep:
             print(c("  [已启用] 深度扫描", C.G))
+    if not do_mcis:
+        ch = _safe_input("  是否启用 Monte Carlo IP 搜索探测？（Y 确认 | N 终止 | 回车跳过）：", to_lower=True)
+        do_mcis = ch == "y"
+        if do_mcis:
+            print(c("  [已启用] Monte Carlo IP 搜索探测", C.G))
+            do_speed = False
+        else:
+            print(c("  [已跳过] Monte Carlo IP 搜索探测", C.G))
     if not a.incremental and not sys.argv[1:]:
         incr_tag_hint = _incr_tag(asns, v4_cidrs)
         has_state = (INCR_DIR / f"{incr_tag_hint}_cidrs.txt").exists()
@@ -667,11 +676,11 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
             else:
                 print(c("  [已跳过] 增量扫描 (回车自动选择)", C.G))
 
-    return do_speed, do_deep
+    return do_speed, do_deep, do_mcis
 
 
 def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
-                 do_speed: bool, do_deep: bool) -> list[tuple[str, Callable[[], object]]]:
+                 do_speed: bool, do_deep: bool, do_mcis: bool) -> list[tuple[str, Callable[[], object]]]:
     steps: list[tuple[str, Callable[[], object]]] = [
         ("Step 1  通过 ASN 提取 CIDR 网段", lambda: step_fetch_prefixes(cfg, asns, v4_cidrs)),
     ]
@@ -689,12 +698,15 @@ def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
     steps.append((f"Step {step_num}  Cloudflare IP 检测与 API 精准过滤", lambda: _pipeline(cfg)))
     step_num += 1
     steps.append((f"Step {step_num}  IP 深度挖掘探测", lambda: step_deep_mine(cfg)))
+    if do_mcis:
+        step_num += 1
+        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=a.mcis)))
+    elif do_speed:
+        step_num += 1
+        steps.append((f"Step {step_num}  网络延迟/带宽速率检测", lambda: step_speed_test(cfg)))
     if do_deep:
         step_num += 1
         steps.append((f"Step {step_num}  深度宽端口扫描", lambda: step_deep_scan(cfg)))
-    if do_speed:
-        step_num += 1
-        steps.append((f"Step {step_num}  网络延迟/带宽速率检测", lambda: step_speed_test(cfg)))
     return steps
 
 
@@ -815,6 +827,8 @@ def _generate_csv(verified_file: Path, asns: list[str], a,
 
 CFST_DIR = Path.home() / ".config" / "ip-tidy"
 CFST_BIN = CFST_DIR / "cfst"
+MCIS_DIR = CFST_DIR
+MCIS_BIN = MCIS_DIR / "mcis"
 CFST_DEFAULT_LIMIT = 15
 CFST_READ_BUFFER_SIZE = 65536
 CFST_HEARTBEAT_THRESHOLD = 10
@@ -1221,6 +1235,312 @@ def _run_cfst_speedtest(a, tag: str) -> None:
         print(c("  [CFST] 结果文件为空", C.LY))
 
 
+def _ensure_mcis_binary() -> Path:
+    if MCIS_BIN.exists() and os.access(str(MCIS_BIN), os.X_OK):
+        return MCIS_BIN
+
+    import platform as _platform
+    _arch = _platform.machine()
+    if _arch == "x86_64":
+        _mcis_arch = "amd64"
+    elif _arch in ("aarch64", "arm64"):
+        _mcis_arch = "arm64"
+    else:
+        _mcis_arch = "amd64"
+
+    _url = f"https://github.com/Leo-Mu/montecarlo-ip-searcher/releases/latest/download/mcis_linux_{_mcis_arch}.tar.gz"
+    print(c(f"  [MCIS] 下载 mcis 二进制... ({_url})", C.W))
+
+    MCIS_DIR.mkdir(parents=True, exist_ok=True)
+    import tempfile as _tmp_m, tarfile as _tar_m, urllib.request as _req_m
+    _tmp_path = ""
+    try:
+        with _tmp_m.NamedTemporaryFile(suffix=".tar.gz", delete=False) as _tmp:
+            _tmp_path = _tmp.name
+        _req_m.urlretrieve(_url, _tmp_path)
+        with _tar_m.open(_tmp_path, "r:gz") as _tar:
+            _tar.extract("mcis", str(MCIS_DIR))
+        os.chmod(str(MCIS_BIN), 0o755)
+        print(c(f"  [MCIS] 已安装到 {MCIS_BIN}", C.G))
+        return MCIS_BIN
+    except Exception as _e:
+        print(c(f"  [FAIL] mcis 下载失败: {_e}", C.LR))
+        raise OSError(f"mcis 下载失败: {_e}")
+    finally:
+        if _tmp_path and os.path.exists(_tmp_path):
+            os.unlink(_tmp_path)
+
+
+def _expand_ips_to_cidrs(entries: list[str], prefix: int = 24) -> list[str]:
+    cidr_set: set[str] = set()
+    for entry in entries:
+        ip = entry.split(":")[0]
+        try:
+            net = ipaddress.ip_network(f"{ip}/{prefix}", strict=False)
+            cidr_set.add(str(net))
+        except ValueError:
+            pass
+    return sorted(cidr_set)
+
+
+def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
+    step_start = time.time()
+    verified_file = BASE / "verified.txt"
+    entries = _read_verified_entries()
+    if not entries:
+        print(c("  无 IP，跳过", C.LY))
+        return 0
+
+    print(c(f"  [MCIS] Monte Carlo IP 搜索 ({len(entries)} 个 IP 源)", C.W))
+
+    prefix = 24
+    budget = 3000
+    concurrency = 100
+    top = 20
+    download_top = 5
+    host = ""
+
+    if not auto_mcis:
+        prefix_inp = _safe_input(f"  扩展网段维度 (默认/{prefix}): ")
+        if prefix_inp:
+            try:
+                p = int(prefix_inp.lstrip("/"))
+                if 8 <= p <= 32:
+                    prefix = p
+            except ValueError:
+                pass
+        print(f"  扩展为 /{prefix} CIDR")
+
+        budget_inp = _safe_input(f"  扫描预算 (默认{budget}): ")
+        if budget_inp.isdigit() and int(budget_inp) > 0:
+            budget = int(budget_inp)
+
+        conc_inp = _safe_input(f"  并发数 (默认{concurrency}): ")
+        if conc_inp.isdigit() and int(conc_inp) > 0:
+            concurrency = int(conc_inp)
+
+        top_inp = _safe_input(f"  保留最优 IP 数 (默认{top}): ")
+        if top_inp.isdigit() and int(top_inp) > 0:
+            top = int(top_inp)
+
+        dl_inp = _safe_input(f"  下载测速 IP 数 (默认{download_top}): ")
+        if dl_inp.isdigit() and int(dl_inp) > 0:
+            download_top = int(dl_inp)
+
+        host_inp = _safe_input("  测试目标域名 (如 speed.cloudflare.com, 回车使用默认): ")
+        if host_inp:
+            host = host_inp
+    else:
+        print(f"  参数: /{prefix} CIDR, 预算 {budget}, 并发 {concurrency}, TOP {top}, 下载测速 {download_top}")
+
+    cidrs = _expand_ips_to_cidrs(entries, prefix)
+    print(f"  扩展: {len(entries)} IP -> {len(cidrs)} /{prefix} CIDR")
+
+    try:
+        mcis_bin = _ensure_mcis_binary()
+    except OSError:
+        return 0
+
+    cidr_file = BASE / ".mcis_cidrs.txt"
+    cidr_file.write_text("\n".join(cidrs) + "\n")
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    result_file = BASE / f"mcis_result_{ts}.csv"
+
+    cmd = [
+        str(mcis_bin),
+        "--cidr-file", str(cidr_file),
+        "--budget", str(budget),
+        "--concurrency", str(concurrency),
+        "--top", str(top),
+        "--download-top", str(download_top),
+        "--download-mode", "sequential",
+        "--out", "csv",
+        "--out-file", str(result_file),
+        "-v",
+    ]
+    if host:
+        cmd.extend(["--host", host])
+
+    print(c(f"  [MCIS] 启动探测 (预算 {budget}, 并发 {concurrency}, TOP {top}, 下载测速 {download_top})", C.G))
+
+    import fcntl as _fcntl
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=0,
+        cwd=str(BASE),
+    )
+
+    fd = proc.stdout.fileno()
+    _fl = _fcntl.fcntl(fd, _fcntl.F_GETFL)
+    _fcntl.fcntl(fd, _fcntl.F_SETFL, _fl | os.O_NONBLOCK)
+
+    _buffer = b""
+    _start_time = time.time()
+    _max_seconds = 600
+
+    while True:
+        if time.time() - _start_time > _max_seconds:
+            print(c(f"\n  [MCIS] 超时 {_max_seconds}s，终止进程", C.LR))
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            proc.stdout.close()
+            write_progress_done(" | MCIS 超时终止")
+            cidr_file.unlink(missing_ok=True)
+            return 0
+
+        if proc.poll() is not None:
+            try:
+                while True:
+                    _chunk = os.read(fd, CFST_READ_BUFFER_SIZE)
+                    if not _chunk:
+                        break
+                    _buffer += _chunk
+            except (BlockingIOError, OSError):
+                pass
+            break
+
+        try:
+            _chunk = os.read(fd, CFST_READ_BUFFER_SIZE)
+            if _chunk:
+                _buffer += _chunk
+        except (BlockingIOError, OSError):
+            pass
+
+        _text = _buffer.decode("utf-8", errors="replace")
+        _matches = list(re.finditer(r"\[(\d+)/(\d+)\]", _text))
+        if _matches:
+            _current = int(_matches[-1].group(1))
+            _total = int(_matches[-1].group(2))
+            if _total > 0:
+                _pct = min(_current / _total * 100, 100)
+                _elapsed = time.time() - _start_time
+                _eta = _elapsed / _pct * (100 - _pct) if _pct > 1 else 0
+                _eta_s = f" | ETA {int(_eta // 60)}分{int(_eta % 60)}秒" if _pct > 1 else ""
+                write_progress(_pct, f" | MCIS 探测{_eta_s}")
+
+        time.sleep(0.5)
+
+    proc.wait()
+    proc.stdout.close()
+    write_progress_done(" | MCIS 探测完成")
+
+    cidr_file.unlink(missing_ok=True)
+
+    if proc.returncode != 0:
+        print()
+        print(c(f"  [FAIL] mcis 返回码 {proc.returncode}", C.LR))
+        return 0
+
+    import csv as _csv
+
+    _rows: list[list[str]] = []
+    _hdr: list[str] = []
+    if result_file.exists() and result_file.stat().st_size > 0:
+        try:
+            with open(result_file, "r", newline="", encoding="utf-8") as _f:
+                _reader = _csv.reader(_f)
+                try:
+                    _hdr = next(_reader) or []
+                except StopIteration:
+                    _hdr = []
+                _rows = list(_reader)
+        except (OSError, _csv.Error):
+            _rows = []
+
+    if not _rows:
+        print(c("  [MCIS] 结果文件为空或无有效数据", C.LY))
+        return 0
+
+    _ip_col = -1
+    _lat_col = -1
+    _speed_col = -1
+    _colo_col = -1
+    for _i, _col in enumerate(_hdr):
+        _cn = _col.strip().lower()
+        if _cn == "ip" or "地址" in _cn:
+            _ip_col = _i
+        elif "total" in _cn or "score" in _cn or "延迟" in _cn or "latency" in _cn:
+            if _lat_col < 0:
+                _lat_col = _i
+        elif "speed" in _cn or "download" in _cn or "速度" in _cn or "mb" in _cn:
+            _speed_col = _i
+        elif "colo" in _cn:
+            _colo_col = _i
+
+    if _ip_col < 0:
+        _ip_col = 0
+    if _lat_col < 0:
+        _lat_col = 1
+
+    existing_ips = {e.split(":")[0] for e in entries}
+    new_count = 0
+
+    for _rw in _rows:
+        if not _rw or len(_rw) <= _ip_col:
+            continue
+        try:
+            _ip = _rw[_ip_col].strip()
+        except IndexError:
+            continue
+
+        if not _ip or _ip in existing_ips:
+            continue
+
+        _lat = ""
+        if _lat_col >= 0 and _lat_col < len(_rw):
+            try:
+                _lat = str(round(float(_rw[_lat_col]), 2))
+            except (ValueError, IndexError):
+                _lat = ""
+
+        _spd = ""
+        if _speed_col >= 0 and _speed_col < len(_rw):
+            try:
+                _spd = str(round(float(_rw[_speed_col]), 2))
+            except (ValueError, IndexError):
+                _spd = ""
+
+        _colo = ""
+        if _colo_col >= 0 and _colo_col < len(_rw):
+            _colo = _rw[_colo_col].strip()
+
+        _port = "443"
+        _proto = "IPv6" if ":" in _ip else "IPv4"
+
+        _country = ""
+        _city = ""
+        try:
+            gi = geo_lookup(_ip)
+            if gi:
+                _country = gi.get("country", "")
+                _city = gi.get("city", "")
+        except (OSError, TypeError):
+            pass
+
+        _line = f"{_ip},{_port},TRUE,{_colo},{_country},{_city},{_lat},{_spd},,{_proto}"
+
+        with open(verified_file, "a", encoding="utf-8") as f:
+            f.write(_line + "\n")
+
+        existing_ips.add(_ip)
+        new_count += 1
+
+    elapsed = int(time.time() - step_start)
+    m, s = divmod(elapsed, 60)
+    if m:
+        print(c(f"  [MCIS] 新增 {new_count} 条 IP, 本步耗时: {m}分{s}秒", C.G))
+    else:
+        print(c(f"  [MCIS] 新增 {new_count} 条 IP, 本步耗时: {elapsed}秒", C.G))
+
+    return new_count
+
 
 def main() -> None:
     main_start = time.time()
@@ -1262,6 +1582,8 @@ def main() -> None:
                         help="自动运行 CloudflareSpeedTest 对结果 IP 测速优选")
     parser.add_argument("--cfst-count", metavar="N", type=int, default=CFST_DEFAULT_LIMIT,
                         help=f"cfst 取前 N 条最优 IP (默认 {CFST_DEFAULT_LIMIT})")
+    parser.add_argument("--mcis", action="store_true",
+                        help="启用 Monte Carlo IP 搜索探测 (替代测速)")
     a = parser.parse_args()
 
     if a.geo_update:
@@ -1300,8 +1622,8 @@ def main() -> None:
         print(f"  发包速率: {cfg.masscan_rate} pps (手动)")
 
     _resolve_port_mode(a, cfg, sys.argv[1:])
-    do_speed, do_deep = _interactive_choices(a, v4_cidrs, asns)
-    steps = _build_steps(a, cfg, asns, v4_cidrs, do_speed, do_deep)
+    do_speed, do_deep, do_mcis = _interactive_choices(a, v4_cidrs, asns)
+    steps = _build_steps(a, cfg, asns, v4_cidrs, do_speed, do_deep, do_mcis)
     _cleanup_temp_files(a)
 
     cidr_count_val = 0
