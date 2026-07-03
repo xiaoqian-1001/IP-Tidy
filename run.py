@@ -1627,7 +1627,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
 
         _top_prefixes = list(dict.fromkeys(p for _, _, _, p, _ in _display_rows[:5] if p))
         if _top_prefixes:
-            print(c(f"  前5优质IP分布网段: {', '.join(_top_prefixes)}", C.G))
+            print(c(f"  TOP5 IP 所属网段：{'、'.join(_top_prefixes)}", C.G))
 
     total_count = len(_result_lines)
     elapsed = int(time.time() - step_start)
