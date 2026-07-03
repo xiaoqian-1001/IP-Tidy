@@ -1447,10 +1447,11 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
             pass
 
         _text = _buffer.decode("utf-8", errors="replace")
-        _matches = list(re.finditer(r"(\d+)/(\d+)", _text))
+        _matches = list(re.finditer(r"progress:\s*(\d+)/(\d+)", _text))
         if _matches:
-            _current = int(_matches[-1].group(1))
-            _total = int(_matches[-1].group(2))
+            _match = _matches[-1]
+            _current = int(_match.group(1))
+            _total = int(_match.group(2))
             if _total > 0:
                 _pct = min(_current / _total * 100, 100)
                 _elapsed = time.time() - _start_time
