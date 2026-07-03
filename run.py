@@ -1451,9 +1451,10 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
             pass
 
         _text = _buffer.decode("utf-8", errors="replace")
-        _matches = list(re.finditer(r"progress:\s*(\d+)/(\d+)", _text))
-        if _matches:
-            _match = _matches[-1]
+        _p_matches = list(re.finditer(r"progress:\s*(\d+)/(\d+)", _text))
+        _dl_matches = list(re.finditer(r"download:\s*rank=(\d+)", _text))
+        if _p_matches:
+            _match = _p_matches[-1]
             _current = int(_match.group(1))
             _total = int(_match.group(2))
             if _total > 0:
@@ -1462,6 +1463,10 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
                 _eta = _elapsed / _pct * (100 - _pct) if _pct > 1 else 0
                 _eta_s = f" | ETA {int(_eta // 60)}分{int(_eta % 60)}秒" if _pct > 1 else ""
                 write_progress(_pct, f" | MCIS 探测{_eta_s}")
+        elif _dl_matches:
+            _dl_cur = len(_dl_matches)
+            _pct = min(_dl_cur / download_top * 100, 100)
+            write_progress(_pct, f" | MCIS 带宽测速 ({_dl_cur}/{download_top})")
 
         time.sleep(0.5)
 
