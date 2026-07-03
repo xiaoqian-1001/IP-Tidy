@@ -1521,10 +1521,11 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         _lat = ""
         _spd = ""
         if _dl and _dl["ok"] == "true":
-            try:
-                _lat = str(round(float(_dl["ms"]), 2))
-            except (ValueError, IndexError):
-                _lat = ""
+            if _lat_col >= 0 and _lat_col < len(_rw):
+                try:
+                    _lat = str(round(float(_rw[_lat_col]), 2))
+                except (ValueError, IndexError):
+                    _lat = ""
             try:
                 _spd = str(round(float(_dl["mbps"]), 2))
             except (ValueError, IndexError):
