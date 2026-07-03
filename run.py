@@ -1483,6 +1483,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     _lat_col = -1
     _speed_col = -1
     _colo_col = -1
+    _prefix_col = -1
     for _i, _col in enumerate(_hdr):
         _cn = _col.strip().lower()
         if _cn == "ip" or "地址" in _cn:
@@ -1494,13 +1495,15 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
             _speed_col = _i
         elif "colo" in _cn:
             _colo_col = _i
+        elif "prefix" in _cn or "cidr" in _cn or "网段" in _cn:
+            _prefix_col = _i
 
     if _ip_col < 0:
         _ip_col = 0
     if _lat_col < 0:
         _lat_col = 1
 
-    _display_rows: list[tuple[str, str, str]] = []
+    _display_rows: list[tuple[str, str, str, str]] = []
     _result_lines: list[str] = []
 
     for _rw in _rows:
@@ -1556,7 +1559,11 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
 
         _line = f"{_ip},{_port},TRUE,{_colo},{_country},{_city},{_lat},{_spd},,{_proto}"
         _result_lines.append(_line)
-        _display_rows.append((_ip, _lat, _spd))
+
+        _prefix = ""
+        if _prefix_col >= 0 and _prefix_col < len(_rw):
+            _prefix = _rw[_prefix_col].strip()
+        _display_rows.append((_ip, _lat, _spd, _prefix))
 
     _header = "IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN,协议"
     with open(verified_file, "w", encoding="utf-8") as f:
@@ -1572,17 +1579,21 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     if _display_rows:
         print_sep("─", C.B)
         print(c(f"  Monte Carlo IP 搜索结果｜合计 {len(_display_rows)} 条替换 IP", C.LC))
-        _mcis_hdr = "  " + _pad_cjk("IP 地址", 20, '<') + "  " + _pad_cjk("延迟(ms)", 10, '>') + "  " + _pad_cjk("下载速度(MB/s)", 16, '>')
+        _mcis_hdr = "  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 10, '>') + "  " + _pad_cjk("下载速度(MB/s)", 14, '>') + "  " + _pad_cjk("所属网段", 16, '<')
         print(c(_mcis_hdr, C.W))
-        for _i, (_ip, _lat, _spd) in enumerate(_display_rows):
+        for _i, (_ip, _lat, _spd, _prefix) in enumerate(_display_rows):
             if _i == 0:
                 _color = C.LG
             elif _i < 3:
                 _color = C.LY
             else:
                 _color = C.W
-            _line = "  " + _pad_cjk(_ip, 20, '<') + "  " + _pad_cjk(_lat, 10, '>') + "  " + _pad_cjk(_spd, 16, '>')
+            _line = "  " + _pad_cjk(_ip, 18, '<') + "  " + _pad_cjk(_lat, 10, '>') + "  " + _pad_cjk(_spd, 14, '>') + "  " + _pad_cjk(_prefix, 16, '<')
             print(c(_line, _color))
+
+        _top_prefixes = list(dict.fromkeys(p for _, _, _, p in _display_rows[:5] if p))
+        if _top_prefixes:
+            print(c(f"  前5优质IP分布网段: {', '.join(_top_prefixes)}", C.G))
 
     total_count = len(_result_lines)
     elapsed = int(time.time() - step_start)
