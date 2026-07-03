@@ -1107,6 +1107,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
         return
 
     # 加权评分重排
+    _rtt_map = {r.ip: r for r in rtt_results}
     _scored: list[tuple[float, float, str]] = []
     for rl in result_lines:
         parts = rl.split()
@@ -1114,11 +1115,13 @@ def _run_cfst_speedtest(a, tag: str) -> None:
             _scored.append((0, 0, rl))
             continue
         try:
+            _ip = parts[0]
             _lat = float(parts[-2])
             _speed_mbs = float(parts[-1])
-            _bw = _speed_mbs * 8
-            _score = _bw * 3 + max(0, 1000 - _lat)
-            _scored.append((_score, _bw, rl))
+            _jitter = _rtt_map[_ip].http_jitter_ms if _ip in _rtt_map else 0
+            _penalty = max(0.1, 1 + 0.01 * _lat + 0.02 * _jitter)
+            _score = _speed_mbs / _penalty
+            _scored.append((_score, _speed_mbs, rl))
         except (ValueError, IndexError):
             _scored.append((0, 0, rl))
     _scored.sort(key=lambda x: (-x[0], -x[1]))
