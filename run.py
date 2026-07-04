@@ -1331,7 +1331,9 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
 
     prefix = 24
     budget = 3000
-    concurrency = 100
+    concurrency = 200
+    heads = 8
+    beam = 48
     top = 20
     download_top = 5
     host = ""
@@ -1356,6 +1358,14 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         if conc_inp.isdigit() and int(conc_inp) > 0:
             concurrency = int(conc_inp)
 
+        heads_inp = _safe_input(f"  搜索头数 (默认{heads}): ")
+        if heads_inp.isdigit() and int(heads_inp) > 0:
+            heads = int(heads_inp)
+
+        beam_inp = _safe_input(f"  波束宽度 (默认{beam}): ")
+        if beam_inp.isdigit() and int(beam_inp) > 0:
+            beam = int(beam_inp)
+
         top_inp = _safe_input(f"  保留最优 IP 数 (默认{top}): ")
         if top_inp.isdigit() and int(top_inp) > 0:
             top = int(top_inp)
@@ -1377,7 +1387,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     if auto_mcis:
         if len(cidrs) > 150:
             budget = max(3000, min(len(cidrs) * 20, 50000))
-        _params = f"探测阈值 {budget} | 并发 {concurrency} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
+        _params = f"预算 {budget} | 并发 {concurrency} | 搜索头 {heads} | 波束 {beam} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
         if entries:
             _params = f"网段维度 {prefix} | {_params}"
         if budget > 3000:
@@ -1399,6 +1409,8 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         "--cidr-file", str(cidr_file),
         "--budget", str(budget),
         "--concurrency", str(concurrency),
+        "--heads", str(heads),
+        "--beam", str(beam),
         "--top", str(top),
         "--download-top", str(download_top),
         "--download-mode", "sequential",
