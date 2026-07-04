@@ -1435,6 +1435,9 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     _last_pct = 0.0
     _prev_buf_len = 0
     _seen_dl = False
+    _last_best = 99999.0
+    _warned_no_ip = False
+    _probes_done = False
 
     while True:
         if time.time() - _start_time > _max_seconds:
@@ -1470,6 +1473,9 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         _text = _buffer[_prev_buf_len:].decode("utf-8", errors="replace")
         _prev_buf_len = len(_buffer)
         _p_matches = list(re.finditer(r"progress:\s*(\d+)/(\d+)", _text))
+        _best_matches = list(re.finditer(r"best=([\d.]+)ms", _text))
+        if _best_matches:
+            _last_best = float(_best_matches[-1].group(1))
         _dl_matches = list(re.finditer(r"download:\s*rank=(\d+)", _text))
         _pct = _last_pct
         _progress_now = False
@@ -1495,6 +1501,18 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
                 _last_progress_time = time.time()
                 _last_pct = _pct
                 _progress_now = True
+                if _current >= _total:
+                    _probes_done = True
+        if not _probes_done:
+            _full = _buffer.decode("utf-8", errors="replace")
+            _all_p = list(re.finditer(r"progress:\s*(\d+)/(\d+)", _full))
+            if _all_p and int(_all_p[-1].group(1)) >= int(_all_p[-1].group(2)):
+                _probes_done = True
+        if _probes_done and _last_best >= 6000 and not _warned_no_ip:
+            _warned_no_ip = True
+            print()
+            print(c("  [MCIS] 探测完成但未发现有效 IP (best 仍为 6000ms)", C.LY))
+            print(c("         无可用 IP 响应 /cdn-cgi/trace，下载测速将被跳过", C.LY))
         if not _progress_now and _last_pct > 0 and time.time() - _last_progress_time > 3:
             _wait_label = "带宽测速中" if _seen_dl else "等待中"
             write_progress(_last_pct, f" | MCIS {_wait_label}...")
