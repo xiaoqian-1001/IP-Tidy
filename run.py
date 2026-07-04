@@ -1385,7 +1385,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         cidrs = cidr_list
 
     if len(cidrs) > 30:
-        budget = max(3000, min(len(cidrs) * 60, 50000))
+        budget = max(3000, min(len(cidrs) * 100, 50000))
 
     if auto_mcis:
         _params = f"预算 {budget} | 并发 {concurrency} | 搜索头 {heads} | 波束 {beam} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
