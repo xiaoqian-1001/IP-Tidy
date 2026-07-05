@@ -1304,6 +1304,83 @@ def _ensure_mcis_binary() -> Path:
             os.unlink(_tmp_path)
 
 
+NTRACE_DIR = MCIS_DIR
+NTRACE_BIN = NTRACE_DIR / "nexttrace"
+
+_ROUTE_TABLE = {
+    "4809": "精品",
+    "9929": "精品",
+    "58807": "精品",
+    "4812": "优化",
+    "58453": "优化",
+}
+
+
+def _ensure_ntrace_binary() -> Path:
+    if NTRACE_BIN.exists() and os.access(str(NTRACE_BIN), os.X_OK):
+        return NTRACE_BIN
+
+    import platform as _platform, json as _json, urllib.request as _req_n
+
+    _arch = _platform.machine()
+    if _arch == "x86_64":
+        _nt_arch = "amd64"
+    elif _arch in ("aarch64", "arm64"):
+        _nt_arch = "arm64"
+    else:
+        _nt_arch = "amd64"
+
+    _api_url = "https://api.github.com/repos/nxtrace/NTrace-core/releases/latest"
+    print(c(f"  [NTR] 下载 NextTrace 最新版...", C.W))
+    try:
+        with _req_n.urlopen(_api_url, timeout=15) as _resp:
+            _data = _json.loads(_resp.read().decode("utf-8"))
+        _tag = _data["tag_name"]
+    except Exception:
+        raise OSError("NextTrace API 查询失败")
+
+    _dl_url = f"https://github.com/nxtrace/NTrace-core/releases/download/{_tag}/nexttrace-tiny_linux_{_nt_arch}"
+    _tmp_path = None
+    try:
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".ntrace", delete=False) as _tmp:
+            _tmp_path = _tmp.name
+            with _req_n.urlopen(_dl_url, timeout=120) as _resp:
+                _tmp.write(_resp.read())
+        NTRACE_DIR.mkdir(parents=True, exist_ok=True)
+        os.replace(_tmp_path, str(NTRACE_BIN))
+        _tmp_path = None
+        os.chmod(str(NTRACE_BIN), 0o755)
+        print(c(f"  [NTR] 已安装 {_tag}", C.G))
+        return NTRACE_BIN
+    except Exception:
+        raise OSError("NextTrace 下载失败")
+    finally:
+        if _tmp_path and os.path.exists(_tmp_path):
+            os.unlink(_tmp_path)
+
+
+def _trace_route(ip: str, timeout: int = 10) -> str:
+    try:
+        nt = _ensure_ntrace_binary()
+    except OSError:
+        return "错误"
+    try:
+        result = subprocess.run(
+            [str(nt), "--table", "--no-color", "-q", "1", "-m", "15", ip],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        output = result.stdout + result.stderr
+    except (subprocess.TimeoutExpired, OSError):
+        return "超时"
+
+    asns = set(re.findall(r"AS(\d+)", output))
+    for asn, label in _ROUTE_TABLE.items():
+        if asn in asns:
+            return label
+    return "普通"
+
+
 def _expand_ips_to_cidrs(entries: list[str], prefix: int = 24) -> list[str]:
     cidr_set: set[str] = set()
     for entry in entries:
@@ -1589,7 +1666,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     if _lat_col < 0:
         _lat_col = 1
 
-    _display_rows: list[tuple[str, str, str, str, str]] = []
+    _display_rows: list[tuple[str, str, str, str, str, str]] = []
     _result_lines: list[str] = []
 
     for _rw in _rows:
@@ -1646,7 +1723,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         _prefix = ""
         if _prefix_col >= 0 and _prefix_col < len(_rw):
             _prefix = _rw[_prefix_col].strip()
-        _display_rows.append((_ip, _lat, _spd, _prefix, _colo))
+        _display_rows.append((_ip, _lat, _spd, _prefix, _colo, ""))
 
     _header = "IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN,协议"
     with open(verified_file, "w", encoding="utf-8") as f:
@@ -1663,25 +1740,40 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
             print(c("         延迟低的 IP 手动测速通常正常，建议以延迟为准筛选", C.LY))
 
     if _display_rows:
+        print(c("  [NTR] 正在分析路由线路...", C.W))
+        _traced: list[tuple[str, str, str, str, str, str]] = []
+        for _i, _row in enumerate(_display_rows):
+            _ip = _row[0]
+            _route = _trace_route(_ip)
+            _traced.append((_row[0], _row[1], _row[2], _row[3], _row[4], _route))
+            print(c(f"         [{_i + 1}/{len(_display_rows)}] {_ip} -> {_route}", C.W))
+        _display_rows = _traced
+
         print_sep("─", C.B)
         print(c(f"  蒙特卡洛 IP 择优探测结果｜合计获取 {len(_display_rows)} 条替换 IP", C.LC))
         _mcis_hdr = ("  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 8, '<') +
                      "  " + _pad_cjk("下载速度(MB/s)", 14, '<') + "  " + _pad_cjk("地区码", 8, '<') +
-                     "  " + _pad_cjk("所属网段", 16, '<'))
+                     "  " + _pad_cjk("所属网段", 16, '<') + "  " + _pad_cjk("线路", 6, '<'))
         print(c(_mcis_hdr, C.W))
-        for _i, (_ip, _lat, _spd, _prefix, _colo) in enumerate(_display_rows):
+        for _i, (_ip, _lat, _spd, _prefix, _colo, _route) in enumerate(_display_rows):
             if _i == 0:
                 _color = C.LG
             elif _i < 3:
                 _color = C.LY
             else:
                 _color = C.W
+            if "精品" in _route:
+                _r_color = C.LG
+            elif "优化" in _route:
+                _r_color = C.LY
+            else:
+                _r_color = C.W
             _line = ("  " + _pad_cjk(_ip, 18, '<') + "  " + _pad_cjk(_lat, 8, '<') +
                      "  " + _pad_cjk(_spd, 14, '<') + "  " + _pad_cjk(_colo.upper(), 8, '<') +
-                     "  " + _pad_cjk(_prefix, 16, '<'))
+                     "  " + _pad_cjk(_prefix, 16, '<') + "  " + c(_pad_cjk(_route, 6, '<'), _r_color))
             print(c(_line, _color))
 
-        _top_prefixes = list(dict.fromkeys(p for _, _, _, p, _ in _display_rows[:5] if p))
+        _top_prefixes = list(dict.fromkeys(p for _, _, _, p, _, _ in _display_rows[:5] if p))
         if _top_prefixes:
             print(c(f"  TOP5 IP 所属网段：{'、'.join(_top_prefixes)}", C.G))
 
