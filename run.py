@@ -1516,8 +1516,10 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         if _probes_done and _last_best >= 6000 and not _warned_no_ip:
             _warned_no_ip = True
             print()
-            print(c("  [MCIS] 探测完成但未发现有效 IP (best 仍为 6000ms)", C.LY))
-            print(c("  [MCIS] 终止测验、跳过下载测速", C.LY))
+            print_sep("─", C.LR)
+            print(c("  [MCIS] 探测完成但未发现有效 IP (best 仍为 6000ms)", C.LR))
+            print(c("         终止测验、跳过下载测速", C.LR))
+            print_sep("─", C.LR)
             proc.terminate()
             try:
                 proc.wait(timeout=10)
