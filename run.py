@@ -1330,7 +1330,6 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         print(c(f"  [MCIS] 读取 CIDR 网段文件 | 共载入 {len(cidr_list)} 条网段", C.W))
 
     prefix = 24
-    budget = 3000
     concurrency = 200
     heads = 4
     beam = 32
@@ -1349,10 +1348,6 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
                 except ValueError:
                     pass
             print(c(f"  扩展为 /{prefix} CIDR", C.W))
-
-        budget_inp = _safe_input(f"  扫描预算 (默认{budget}): ")
-        if budget_inp.isdigit() and int(budget_inp) > 0:
-            budget = int(budget_inp)
 
         conc_inp = _safe_input(f"  并发数 (默认{concurrency}): ")
         if conc_inp.isdigit() and int(conc_inp) > 0:
@@ -1384,8 +1379,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     else:
         cidrs = cidr_list
 
-    if len(cidrs) > 30:
-        budget = max(3000, min(len(cidrs) * 100, 50000))
+    budget = max(3000, min(len(cidrs) * 100, 50000))
 
     if auto_mcis:
         _params = f"预算 {budget} | 并发 {concurrency} | 搜索头 {heads} | 波束 {beam} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
