@@ -1433,13 +1433,11 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     else:
         cidrs = cidr_list
 
-    budget = max(3000, min(len(cidrs) * 100, 50000))
+    budget = 3000
 
     _params = f"预算 {budget} | 并发 {concurrency} | 搜索头 {heads} | 波束 {beam} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
     if entries:
         _params = f"网段维度 {prefix} | {_params}"
-    if budget > 3000:
-        _params += c(f" (网段 {len(cidrs)} 条, 已提升预算)", C.LY)
     print(c(f"  运行参数：{_params}", C.W))
     try:
         mcis_bin = _ensure_mcis_binary()
