@@ -1427,14 +1427,14 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
                     pass
             print(c(f"  扩展为 /{prefix} CIDR", C.W))
 
-        if not colo:
-            colo_inp = _safe_input("  CDN 机房白名单 (逗号分隔, 回车跳过): ")
-            if colo_inp:
-                colo = colo_inp.strip().upper()
-        if not colo_exclude:
-            excl_inp = _safe_input("  CDN 机房黑名单 (逗号分隔, 回车跳过): ")
-            if excl_inp:
-                colo_exclude = excl_inp.strip().upper()
+    if not colo:
+        colo_inp = _safe_input("  CDN 机房白名单 (逗号分隔, 回车跳过): ")
+        if colo_inp:
+            colo = colo_inp.strip().upper()
+    if not colo_exclude:
+        excl_inp = _safe_input("  CDN 机房黑名单 (逗号分隔, 回车跳过): ")
+        if excl_inp:
+            colo_exclude = excl_inp.strip().upper()
 
     if entries:
         cidrs = _expand_ips_to_cidrs(entries, prefix)
