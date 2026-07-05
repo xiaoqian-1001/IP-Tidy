@@ -965,7 +965,8 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     if not ips:
         return
 
-    cfst_limit = getattr(a, "cfst_count", None) or CFST_DEFAULT_LIMIT
+    _v = getattr(a, "cfst_count", None)
+    cfst_limit = _v if _v is not None else CFST_DEFAULT_LIMIT
 
     if not a.cfst:
         ch = _safe_input(f"  是否启动测速择优流程？当前待检测 IP 总量 {len(ips)} 个（Y 确认 | N 终止 | 回车跳过）：", to_lower=True)
@@ -1417,7 +1418,8 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         cmd.extend(["--host", host])
 
     for _old in BASE.glob("mcis_result_*.csv"):
-        _old.unlink(missing_ok=True)
+        _bkp = _old.with_suffix(_old.suffix + ".bkp")
+        _old.rename(_bkp)
 
     import fcntl as _fcntl
 
@@ -1613,7 +1615,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     if _lat_col < 0:
         _lat_col = 1
 
-    _display_rows: list[tuple[str, str, str, str]] = []
+    _display_rows: list[tuple[str, str, str, str, str]] = []
     _result_lines: list[str] = []
 
     for _rw in _rows:
@@ -1644,10 +1646,6 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
                 _lat = str(round(float(_rw[_lat_col]), 2))
             except (ValueError, IndexError):
                 _lat = ""
-
-        _colo = ""
-        if _colo_col >= 0 and _colo_col < len(_rw):
-            _colo = _rw[_colo_col].strip()
 
         _port = "443"
         _proto = "IPv6" if ":" in _ip else "IPv4"
@@ -1686,6 +1684,9 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         _dl_ok = sum(1 for v in _dl_map.values() if v["ok"] == "true")
         _dl_total = len(_dl_map)
         print(c(f"  [MCIS] 带宽测速 | 通过率: {_dl_ok * 100 // _dl_total}% ({_dl_ok}/{_dl_total})", C.G if _dl_ok > 0 else C.LY))
+        if _dl_ok == 0:
+            print(c("         测速全部失败不代表 IP 不可用，MCIS 内置测速受网络环境影响较大，", C.LY))
+            print(c("         延迟低的 IP 手动测速通常正常，建议以延迟为准筛选", C.LY))
 
     if _display_rows:
         print_sep("─", C.B)
@@ -1709,6 +1710,9 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         _top_prefixes = list(dict.fromkeys(p for _, _, _, p, _ in _display_rows[:5] if p))
         if _top_prefixes:
             print(c(f"  TOP5 IP 所属网段：{'、'.join(_top_prefixes)}", C.G))
+
+    for _bkp in BASE.glob("mcis_result_*.csv.bkp"):
+        _bkp.unlink(missing_ok=True)
 
     total_count = len(_result_lines)
     elapsed = int(time.time() - step_start)
