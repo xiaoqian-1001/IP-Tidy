@@ -1421,8 +1421,6 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     ]
     if host:
         cmd.extend(["--host", host])
-    print(c(f"  [MCIS] 运行命令: {' '.join(str(a) for a in cmd)}", C.LY))
-    print(c(f"  [MCIS] CIDR 文件: {len(cidrs)} 条, 前5条: {cidrs[:5]}", C.LY))
 
     for _old in BASE.glob("mcis_result_*.csv"):
         _old.unlink(missing_ok=True)
