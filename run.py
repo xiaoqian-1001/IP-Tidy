@@ -1741,14 +1741,17 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
 
     if _display_rows:
         _display_rows.sort(key=lambda r: (r[2] == "", float(r[1]) if r[1] else 99999))
-        print(c("  [NTR] 正在分析路由线路...", C.W))
-        _traced: list[tuple[str, str, str, str, str, str]] = []
-        for _i, _row in enumerate(_display_rows):
-            _ip = _row[0]
-            _route = _trace_route(_ip)
-            _traced.append((_row[0], _row[1], _row[2], _row[3], _row[4], _route))
-            print(c(f"         [{_i + 1}/{len(_display_rows)}] {_ip} -> {_route}", C.W))
-        _display_rows = _traced
+        if _dl_map and _dl_ok == 0:
+            print(c("  [NTR] 带宽测速全失败，跳过路由分析", C.LY))
+        else:
+            _traced: list[tuple[str, str, str, str, str, str]] = []
+            for _i, _row in enumerate(_display_rows):
+                _ip = _row[0]
+                write_progress((_i + 1) / len(_display_rows) * 100, f" | 路由追踪 ({_i + 1}/{len(_display_rows)})")
+                _route = _trace_route(_ip)
+                _traced.append((_row[0], _row[1], _row[2], _row[3], _row[4], _route))
+            _display_rows = _traced
+            write_progress_done(" | 路由追踪完成")
 
         print_sep("─", C.B)
         print(c(f"  蒙特卡洛 IP 择优探测结果｜合计获取 {len(_display_rows)} 条替换 IP", C.LC))
