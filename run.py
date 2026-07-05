@@ -1740,6 +1740,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
             print(c("         延迟低的 IP 手动测速通常正常，建议以延迟为准筛选", C.LY))
 
     if _display_rows:
+        _display_rows.sort(key=lambda r: (r[2] == "", float(r[1]) if r[1] else 99999))
         print(c("  [NTR] 正在分析路由线路...", C.W))
         _traced: list[tuple[str, str, str, str, str, str]] = []
         for _i, _row in enumerate(_display_rows):
@@ -1752,7 +1753,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
         print_sep("─", C.B)
         print(c(f"  蒙特卡洛 IP 择优探测结果｜合计获取 {len(_display_rows)} 条替换 IP", C.LC))
         _mcis_hdr = ("  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 8, '<') +
-                     "  " + _pad_cjk("下载速度(MB/s)", 14, '<') + "  " + _pad_cjk("地区码", 8, '<') +
+                     "  " + _pad_cjk("速度(MB/s)", 14, '<') + "  " + _pad_cjk("地区码", 8, '<') +
                      "  " + _pad_cjk("所属网段", 16, '<') + "  " + _pad_cjk("线路", 6, '<'))
         print(c(_mcis_hdr, C.W))
         for _i, (_ip, _lat, _spd, _prefix, _colo, _route) in enumerate(_display_rows):
@@ -1769,7 +1770,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
             else:
                 _r_color = C.W
             _line = ("  " + _pad_cjk(_ip, 18, '<') + "  " + _pad_cjk(_lat, 8, '<') +
-                     "  " + _pad_cjk(_spd, 14, '<') + "  " + _pad_cjk(_colo.upper(), 8, '<') +
+                     "  " + _pad_cjk(_spd or "-", 14, '<') + "  " + _pad_cjk(_colo.upper(), 8, '<') +
                      "  " + _pad_cjk(_prefix, 16, '<') + "  " + c(_pad_cjk(_route, 6, '<'), _r_color))
             print(c(_line, _color))
 
