@@ -694,7 +694,7 @@ def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
     step_num = 1
     if a.mcis_only:
         step_num += 1
-        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=True)))
+        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=True, colo=a.colo, colo_exclude=a.colo_exclude)))
         return steps
     if a.smart:
         step_num += 1
@@ -711,7 +711,7 @@ def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
     steps.append((f"Step {step_num}  IP 深度挖掘探测", lambda: step_deep_mine(cfg)))
     if do_mcis:
         step_num += 1
-        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=a.mcis)))
+        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=a.mcis, colo=a.colo, colo_exclude=a.colo_exclude)))
     elif do_speed:
         step_num += 1
         steps.append((f"Step {step_num}  网络延迟/带宽速率检测", lambda: step_speed_test(cfg)))
@@ -1393,7 +1393,7 @@ def _expand_ips_to_cidrs(entries: list[str], prefix: int = 24) -> list[str]:
     return sorted(cidr_set)
 
 
-def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
+def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "", colo_exclude: str = "") -> int:
     step_start = time.time()
     verified_file = BASE / "verified.txt"
     entries = _read_verified_entries()
@@ -1466,6 +1466,10 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
     ]
     if host:
         cmd.extend(["--host", host])
+    if colo:
+        cmd.extend(["--colo", colo])
+    if colo_exclude:
+        cmd.extend(["--colo-exclude", colo_exclude])
 
     for _old in BASE.glob("mcis_result_*.csv"):
         _bkp = _old.with_suffix(_old.suffix + ".bkp")
@@ -1841,6 +1845,10 @@ def main() -> None:
                         help=f"cfst 取前 N 条最优 IP (默认 {CFST_DEFAULT_LIMIT})")
     parser.add_argument("--mcis", action="store_true",
                         help="启用 Monte Carlo IP 搜索探测 (替代测速)")
+    parser.add_argument("--colo", metavar="CODES", type=str, default="",
+                        help="MCIS CDN 机房白名单，例: HKG,SJC")
+    parser.add_argument("--colo-exclude", metavar="CODES", type=str, default="",
+                        help="MCIS CDN 机房黑名单，例: LAX,DFW")
     a = parser.parse_args()
     a.mcis_only = False
     if a.targets and a.targets[0].lower() == "mcis":
