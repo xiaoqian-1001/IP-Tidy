@@ -1350,30 +1350,6 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
                     pass
             print(c(f"  扩展为 /{prefix} CIDR", C.W))
 
-        conc_inp = _safe_input(f"  并发数 (默认{concurrency}): ")
-        if conc_inp.isdigit() and int(conc_inp) > 0:
-            concurrency = int(conc_inp)
-
-        heads_inp = _safe_input(f"  搜索头数 (默认{heads}): ")
-        if heads_inp.isdigit() and int(heads_inp) > 0:
-            heads = int(heads_inp)
-
-        beam_inp = _safe_input(f"  波束宽度 (默认{beam}): ")
-        if beam_inp.isdigit() and int(beam_inp) > 0:
-            beam = int(beam_inp)
-
-        top_inp = _safe_input(f"  保留最优 IP 数 (默认{top}): ")
-        if top_inp.isdigit() and int(top_inp) > 0:
-            top = int(top_inp)
-
-        dl_inp = _safe_input(f"  下载测速 IP 数 (默认{download_top}): ")
-        if dl_inp.isdigit() and int(dl_inp) > 0:
-            download_top = int(dl_inp)
-
-        host_inp = _safe_input("  测试目标域名 (如 speed.cloudflare.com, 回车使用默认): ")
-        if host_inp:
-            host = host_inp
-
     if entries:
         cidrs = _expand_ips_to_cidrs(entries, prefix)
         print(c(f"  扩展: {len(entries)} IP -> {len(cidrs)} /{prefix} CIDR", C.W))
@@ -1382,13 +1358,12 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
 
     budget = max(3000, min(len(cidrs) * 100, 50000))
 
-    if auto_mcis:
-        _params = f"预算 {budget} | 并发 {concurrency} | 搜索头 {heads} | 波束 {beam} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
-        if entries:
-            _params = f"网段维度 {prefix} | {_params}"
-        if budget > 3000:
-            _params += c(f" (网段 {len(cidrs)} 条, 已提升预算)", C.LY)
-        print(c(f"  运行参数：{_params}", C.W))
+    _params = f"预算 {budget} | 并发 {concurrency} | 搜索头 {heads} | 波束 {beam} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
+    if entries:
+        _params = f"网段维度 {prefix} | {_params}"
+    if budget > 3000:
+        _params += c(f" (网段 {len(cidrs)} 条, 已提升预算)", C.LY)
+    print(c(f"  运行参数：{_params}", C.W))
     try:
         mcis_bin = _ensure_mcis_binary()
     except OSError:
@@ -1537,7 +1512,6 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
 
         time.sleep(0.5)
 
-    proc.wait()
     proc.stdout.close()
     write_progress_done(" | MCIS 探测完成")
 
@@ -1713,6 +1687,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
 
     for _bkp in BASE.glob("mcis_result_*.csv.bkp"):
         _bkp.unlink(missing_ok=True)
+    result_file.unlink(missing_ok=True)
 
     total_count = len(_result_lines)
     elapsed = int(time.time() - step_start)
