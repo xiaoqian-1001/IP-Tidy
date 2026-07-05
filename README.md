@@ -1,6 +1,6 @@
 <p align="center">
   <br>
-  <img src="https://img.shields.io/badge/version-2.7.0-blue?style=flat-square" alt="version">
+  <img src="https://img.shields.io/badge/version-2.8.0-blue?style=flat-square" alt="version">
   <img src="https://img.shields.io/badge/python-3.8+-green?style=flat-square" alt="python">
   <img src="https://img.shields.io/badge/platform-linux%20|%20macOS%20|%20WSL2-lightgrey?style=flat-square" alt="platform">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="license">
@@ -24,7 +24,7 @@
 |------|------|
 | 智能子网分级 | 大 CIDR 自动拆 /24 抽样探活，仅扫活跃子段 (`--smart`) |
 | 深度挖掘 | 通过 IP 提取 /16 CIDR 二次全流程扫描，自动扩充IP |
-| 蒙特卡洛搜索 | 通过 Monte Carlo 算法在 CIDR 网段中搜索最优 IP (`--mcis`) |
+| 蒙特卡洛搜索 | 通过 Monte Carlo 算法在 CIDR 网段中搜索最优 IP，自动追踪线路 (`--mcis`) |
 | 离线 GeoIP | 内置 MaxMind GeoLite2，无需网络查 ISP / 地区 / ASN |
 | 多输入源 | ASN 编号 / CIDR 网段 / 混合输入，任意组合 |
 | 深度扫描 | 二阶段宽端口扫描，发现隐藏高位端口 |
@@ -197,27 +197,33 @@ qian AS209242
 
 ## MCIS 蒙特卡洛搜索 (`--mcis` / `qian mcis`)
 
-扫描完成后根据已通过 IP 提取 CIDR 网段，使用 Monte Carlo IP Searcher 在网段内搜索最优节点，自动替换原结果。
+扫描完成后根据已通过 IP 提取 CIDR 网段，使用 Monte Carlo IP Searcher 在网段内搜索最优节点，自动替换原结果。结果自动附带 NextTrace 路由线路分析。
 
 ```bash
 qian AS209242 --mcis
-# 交互式参数: 网段维度 / 预算 / 并发 / TOP / 下载测速数
-qian AS209242 --mcis       # 自动模式，使用默认参数
-
 qian mcis AS209242         # 快捷模式: 跳过扫描，直接解析 ASN 运行 MCIS
 ```
 
 | 参数 | 默认值 | 说明 |
 |:--|------|------|
-| 网段维度 | /24 | 从 IP 扩展的 CIDR 前缀长度 |
-| 扫描预算 | 3000 | Monte Carlo 探测预算 |
-| 并发数 | 100 | 并行探测数 |
+| 网段维度 | /24 | 从 IP 扩展的 CIDR 前缀长度 (交互模式可调) |
+| 扫描预算 | 自动 | `max(3000, min(网段数 x 100, 50000))` 动态调整 |
+| 并发数 | 200 | 并行探测数 |
+| 搜索头 | 4 | Monte Carlo 搜索头数 |
+| 波束宽度 | 32 | 波束搜索宽度 |
 | TOP | 20 | 保留最优 IP 数 |
 | 下载测速 | 5 | 实测下载速度的 IP 数 |
-| 目标域名 | speed.cloudflare.com | 下载测速目标 |
 
-> MCIS 替换 `step_speed_test`（测速步骤），结果表中直接展示延迟、下载速度和所属网段信息。
-> `qian mcis <ASN/CIDR>` 快捷模式跳过 Masscan / 深度挖掘 / 交互式参数，直接解析网段运行 MCIS。
+**结果表格列**：
+
+| IP 地址 | 延迟(ms) | 速度(MB/s) | 地区码 | 所属网段 | 线路 |
+|:--|:--|:--|:--|:--|:--|
+
+- 速度列空白时显示 `-`，有速度的 IP 优先排前面
+- 线路列通过 NextTrace 自动判定：精品=绿色、优化=黄色、普通=白色
+- 探测阶段若 best 持续 6000ms（无有效 IP），自动终止跳过快测速
+
+> MCIS 替换测速步骤。`qian mcis <ASN/CIDR>` 快捷模式跳过 Masscan / 深度挖掘，直接解析网段运行 MCIS。
 
 ---
 
@@ -335,6 +341,21 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 ---
 
 ## 更新日志
+
+### v2.8.0
+
+- [新增] NextTrace 路由线路分析：MCIS 结果自动追踪每条 IP 的 ASN 线路，表格新增"线路"列（精品=绿、优化=黄、普通=白）
+- [新增] 探测阶段自动终止：best 持续 6000ms 时自动终止 MCIS，跳过快测速阶段
+- [优化] 预算全自动计算：`max(3000, min(网段数 x 100, 50000))`，移除手动输入
+- [优化] 结果表排序：有下载速度的 IP 优先排前面，空速度显示 `-`
+- [优化] 表头精简：`下载速度(MB/s)` → `速度(MB/s)`
+- [优化] 交互模式精简：移除所有 MCIS 参数提示，仅保留网段维度
+- [优化] MCIS 历史结果保护：新跑成功前旧结果保留为 `.bkp`
+- [修复] `--cfst-count 0` 被错误回退到默认值 15
+- [清理] 删除重复代码、多余 proc.wait()、死代码
+
+<details>
+<summary>历史版本</summary>
 
 ### v2.7.0
 
@@ -496,6 +517,7 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 - [cmliu] -- [CF-Workers-CheckProxyIP] 公共 API
 - [XIU2] -- [CloudflareSpeedTest] 测速优选工具
 - [Leo-Mu] -- [Monte Carlo IP Searcher] 最优节点搜索
+- [nxtrace] -- [NTrace-core] 路由追踪引擎
 
 [masscan]: https://github.com/robertdavidgraham/masscan
 [RIPEStat API]: https://stat.ripe.net/
@@ -506,3 +528,5 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 [CloudflareSpeedTest]: https://github.com/XIU2/CloudflareSpeedTest
 [Leo-Mu]: https://github.com/Leo-Mu
 [Monte Carlo IP Searcher]: https://github.com/Leo-Mu/montecarlo-ip-searcher
+[nxtrace]: https://github.com/nxtrace
+[NTrace-core]: https://github.com/nxtrace/NTrace-core
