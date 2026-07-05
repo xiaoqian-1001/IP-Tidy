@@ -1523,7 +1523,16 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False) -> int:
             _warned_no_ip = True
             print()
             print(c("  [MCIS] 探测完成但未发现有效 IP (best 仍为 6000ms)", C.LY))
-            print(c("         无可用 IP 响应 /cdn-cgi/trace，下载测速将被跳过", C.LY))
+            print(c("  [MCIS] 终止测验、跳过下载测速", C.LY))
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            proc.stdout.close()
+            write_progress_done(" | MCIS 探测(无有效 IP)")
+            cidr_file.unlink(missing_ok=True)
+            return 0
         if not _progress_now and _last_pct > 0 and time.time() - _last_progress_time > 3:
             _wait_label = "带宽测速中" if _seen_dl else "等待中"
             write_progress(_last_pct, f" | MCIS {_wait_label}...")
