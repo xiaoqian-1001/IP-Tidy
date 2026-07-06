@@ -1767,10 +1767,12 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
     if display_rows:
         display_rows.sort(key=lambda r: (r[2] == "", float(r[1]) if r[1] else 99999))
         _dl_ok = sum(1 for v in dl_map.values() if v["ok"] == "true") if dl_map else 0
-        if do_route_trace and not (dl_map and _dl_ok == 0):
-            display_rows = _trace_routes_concurrent(display_rows)
-        elif dl_map and _dl_ok == 0:
+        if dl_map and _dl_ok == 0:
             print(c("  [NTR] 带宽测速全失败，跳过路由分析", C.LY))
+        elif do_route_trace:
+            ch = _safe_input("  是否执行路由追踪分析？（Y 确认 | 回车跳过）：", to_lower=True)
+            if ch == "y":
+                display_rows = _trace_routes_concurrent(display_rows)
 
         print_sep("─", C.B)
         print(c(f"  蒙特卡洛 IP 择优探测结果｜合计获取 {len(display_rows)} 条替换 IP", C.LC))
