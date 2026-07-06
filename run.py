@@ -1777,7 +1777,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
                 _traced = True
 
         print_sep("─", C.B)
-        print(c(f"  蒙特卡洛 IP 择优探测结果｜合计获取 {len(display_rows)} 条替换 IP", C.LC))
+        print(c(f"  Monte Carlo IP 择优探测结果｜总计获取 {len(display_rows)} 条替换 IP", C.LC))
         _mcis_hdr = ("  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 8, '<') +
                      "  " + _pad_cjk("速度(MB/s)", 14, '<') + "  " + _pad_cjk("地区码", 8, '<') +
                      "  " + _pad_cjk("所属网段", 16, '<'))
