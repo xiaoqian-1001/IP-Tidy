@@ -323,7 +323,12 @@ def _pipeline(cfg: ScannerConfig) -> tuple[int, int]:
     rate_pct = passed / hits * 100 if hits else 0
     msg = f"  CF可用IP数量: {hits}  |  精筛通过率: {rate_pct:.0f}% ({passed}/{hits})"
     print(c(msg, C.W))
-    print(c(f"  本步耗时: {int(time.time() - step_start)}秒", C.GY))
+    _elapsed = int(time.time() - step_start)
+    _m, _s = divmod(_elapsed, 60)
+    if _m:
+        print(c(f"  本步耗时: {_m}分{_s}秒", C.GY))
+    else:
+        print(c(f"  本步耗时: {_s}秒", C.GY))
     return hits, passed
 
 
@@ -590,7 +595,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
                 a.smart = True
                 print(c("  [已确认] 智能子网分级探活 (拆分 /24 抽样)", C.G))
             else:
-                print(c("  [已跳过] 智能子网分级 (全量扫描)", C.G))
+                print(c("  [已跳过] 智能子网分级 (全量扫描)", C.LY))
 
     do_speed = a.speed
     do_deep = a.deep
@@ -606,14 +611,14 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
         ts = _safe_input("  是否启用全量测速？（Y 确认 | 回车跳过）：", to_lower=True)
         do_speed = ts == "y"
         if not do_speed:
-            print(c("  [跳过] 全量测速", C.G))
+            print(c("  [已跳过] 全量测速", C.LY))
         else:
             print(c("  [已启用] 全量测速", C.G))
     if not do_deep and not sys.argv[1:]:
         ch = _safe_input("  是否启用深度扫描？（Y 确认 | 回车跳过）：", to_lower=True)
         do_deep = ch == "y"
         if not do_deep:
-            print(c("  [跳过] 深度扫描", C.G))
+            print(c("  [已跳过] 深度扫描", C.LY))
         elif do_deep:
             print(c("  [已启用] 深度扫描", C.G))
     if not do_mcis:
@@ -633,7 +638,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
             if a.incremental:
                 print(c("  [已确认] 增量扫描 (对比上次CIDR，仅扫新增)", C.G))
             else:
-                print(c("  [已跳过] 增量扫描 (回车自动选择)", C.G))
+                print(c("  [已跳过] 增量扫描 (回车自动选择)", C.LY))
 
     return do_speed, do_deep, do_mcis
 
@@ -923,7 +928,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     if not a.cfst:
         ch = _safe_input(f"  是否启动测速择优流程？当前待检测 IP 总量 {len(ips)} 条（Y 确认 | 回车跳过）：", to_lower=True)
         if ch != "y":
-            print(c("  [已跳过] CloudflareSpeedTest 测速", C.LG))
+            print(c("  [已跳过] CloudflareSpeedTest 测速", C.LY))
             return
         cnt = _safe_input(f"  最优 IP 保留数量（默认值{CFST_DEFAULT_LIMIT} | 回车跳过）：")
         if cnt.isdigit() and int(cnt) > 0:
@@ -931,7 +936,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
         elif cnt:
             print(c(f"  无效输入，使用默认: {CFST_DEFAULT_LIMIT}", C.LY))
     else:
-        print(c(f"  [CFST] CloudflareSpeedTest 测速 ({len(ips)} 个IP, 取前 {cfst_limit} 条)", C.G))
+        print(c(f"  [CFST] CloudflareSpeedTest 测速 ({len(ips)} 个 IP, 取前 {cfst_limit} 条)", C.G))
 
     try:
         cfst_bin = _ensure_cfst_binary()
@@ -968,7 +973,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
             else:
                 heapq.heappushpop(heap, (r.rtt_ms, r.ip))
         ips = {ip for heap in per_colo.values() for _, ip in heap}
-        print(c(f"  [RTT] 完成 {len(cf_valid)} 项 CF-RAY 校验，依据 COLO 机房分组策略过滤，保留 {len(ips)} 个有效IP", C.G))
+        print(c(f"  [RTT] 完成 {len(cf_valid)} 项 CF-RAY 校验，依据 COLO 机房分组策略过滤，保留 {len(ips)} 个有效 IP", C.G))
     else:
         ips = {r.ip for r in rtt_results}
         print(c("  [RTT] 无 IP 通过 CF-RAY 验证，回退到全部存活 IP", C.LY))
@@ -1805,9 +1810,9 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
     else:
         summary = f"本次共探测 {total_count} 条 IP"
     if m:
-        print(c(f"  [MCIS] {summary}, 本步耗时: {m}分{s}秒", C.G))
+        print(c(f"  [MCIS] {summary}, 本步耗时: {m}分{s}秒", C.GY))
     else:
-        print(c(f"  [MCIS] {summary}, 本步耗时: {elapsed}秒", C.G))
+        print(c(f"  [MCIS] {summary}, 本步耗时: {elapsed}秒", C.GY))
 
     return total_count
 
@@ -1872,11 +1877,11 @@ def main() -> None:
 
     if a.geo_update:
         print_banner()
-        print("  [GeoIP] 下载 MaxMind GeoLite2 离线数据库")
+        print(c("  [GeoIP] 下载 MaxMind GeoLite2 离线数据库", C.CY))
         print()
         if geo_update_interactive():
             print()
-            print(f"  [OK] 数据库已保存到 {Path.home() / '.config' / 'ip-tidy'}")
+            print(c(f"  [OK] 数据库已保存到 {Path.home() / '.config' / 'ip-tidy'}", C.G))
         sys.exit(0)
 
     print_banner()
@@ -1993,7 +1998,7 @@ def main() -> None:
     print_result_header(
         len(asns), cidr_count_val, total_open, cf_nodes, passed_count, v4_cidr_count,
     )
-    print_sep("-", C.NW)
+    print_sep("─", C.B)
     print_total_time(time.time() - main_start)
 
     if csv_path and csv_path.exists():
@@ -2007,13 +2012,13 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
     if not existing:
         return 0
 
-    print(f"  [当前结果统计] 完成校验的有效 IP: {len(existing)} 条")
+    print(c(f"  [当前结果统计] 完成校验的有效 IP: {len(existing)} 条", C.NW))
     ch = _safe_input("  是否启用深度网段挖掘？（Y 确认 | 回车跳过）：", to_lower=True)
     if ch != "y":
-        print(c("  [已跳过] 深度挖掘", C.LG))
+        print(c("  [已跳过] 深度挖掘", C.LY))
         return 0
 
-    print(c("  [确认] 深度挖掘已开启", C.LG))
+    print(c("  [已确认] 深度挖掘已开启", C.G))
 
     prefix = 16
     prefix_inp = _safe_input("  请输入扩展网段维度 (默认/16): ")
@@ -2041,7 +2046,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
     cidrs = sorted(cidr_set)
     total_possible = sum(ipaddress.ip_network(c).num_addresses for c in cidrs)
 
-    print(f"  深度挖掘: {len(existing)}条IP:端口 -> {len(cidrs)}段 /{prefix} CIDR（{total_possible:,}条IP）")
+    print(c(f"  深度挖掘: {len(existing)} 条 IP:端口 -> {len(cidrs)} 段 /{prefix} CIDR（{total_possible:,} 条 IP）", C.NW))
 
     ensure_cf_scanner()
 
@@ -2061,9 +2066,9 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
 
     step_start = time.time()
     adj_cf = adjust_concurrency(cfg.cf_concurrency, cfg.cpu)
-    print(c("  ─" * 30, C.B))
+    print_sep()
     print(c("  Cloudflare IP 检测与 API 精准过滤", C.LC))
-    print(c("  ─" * 30, C.B))
+    print_sep()
     hit_count = run_cf_scanner(cf_in, cf_out, adj_cf,
                                 progress_callback=_make_deep_mine_cb(step_start))
 
@@ -2156,9 +2161,9 @@ def _run_deep_mine_scan(cidr_file: Path, cfg: ScannerConfig) -> list[str]:
 
     step_start = time.time()
     masscan_rate = probe_masscan_rate(quiet=True)
-    print(c("  ─" * 30, C.B))
+    print_sep()
     print(c("  基于 Masscan 执行端口扫描任务", C.LC))
-    print(c("  ─" * 30, C.B))
+    print_sep()
     ms_start = time.time()
     masscan_hits = run_masscan(cidr_file, cfg.scan_ports, masscan_rate,
                                 progress_callback=_make_deep_mine_cb(step_start))
