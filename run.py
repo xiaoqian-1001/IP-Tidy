@@ -585,7 +585,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
         )
         if has_large:
             print(c(f"  [INFO] 检测到大 CIDR (/{_SUBNET_THRESHOLD}+)，可启用智能子网分级探活", C.CY))
-            ch = _safe_input("  是否启用智能子网分级？(y/n, 回车跳过): ", to_lower=True)
+            ch = _safe_input("  是否启用智能子网分级？（Y 确认 | 回车跳过）：", to_lower=True)
             if ch == "y":
                 a.smart = True
                 print(c("  [已确认] 智能子网分级探活 (拆分 /24 抽样)", C.G))
@@ -596,28 +596,28 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
     do_deep = a.deep
     do_mcis = a.mcis
     if not do_speed and not do_deep and not do_mcis:
-        ch = _safe_input("  是否跳过扫描流程执行蒙特卡洛MCIS探测？（Y 确认 | N 终止 | 回车跳过）: ", to_lower=True)
+        ch = _safe_input("  是否跳过扫描流程执行蒙特卡洛MCIS探测？（Y 确认 | 回车跳过）：", to_lower=True)
         if ch == "y":
             a.mcis_only = True
             do_mcis = True
             print(c("  [已启用] 蒙特卡洛探测", C.G))
             return do_speed, do_deep, do_mcis
     if not do_speed:
-        ts = _safe_input("  是否启用全量测速？（Y 确认 | N 终止 | 回车跳过）：", to_lower=True)
+        ts = _safe_input("  是否启用全量测速？（Y 确认 | 回车跳过）：", to_lower=True)
         do_speed = ts == "y"
         if not do_speed:
             print(c("  [跳过] 全量测速", C.G))
         else:
             print(c("  [已启用] 全量测速", C.G))
     if not do_deep and not sys.argv[1:]:
-        ch = _safe_input("  是否启用深度扫描？（Y 确认 | N 终止 | 回车跳过）：", to_lower=True)
+        ch = _safe_input("  是否启用深度扫描？（Y 确认 | 回车跳过）：", to_lower=True)
         do_deep = ch == "y"
         if not do_deep:
             print(c("  [跳过] 深度扫描", C.G))
         elif do_deep:
             print(c("  [已启用] 深度扫描", C.G))
     if not do_mcis:
-        ch = _safe_input("  是否启用蒙特卡洛MCIS搜索探测？（Y 确认 | N 终止 | 回车跳过）：", to_lower=True)
+        ch = _safe_input("  是否启用蒙特卡洛MCIS搜索探测？（Y 确认 | 回车跳过）：", to_lower=True)
         do_mcis = ch == "y"
         if do_mcis:
             print(c("  [已启用] Monte Carlo IP 搜索探测", C.G))
@@ -628,7 +628,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
         incr_tag_hint = _incr_tag(asns, v4_cidrs)
         has_state = (INCR_DIR / f"{incr_tag_hint}_cidrs.txt").exists()
         if has_state:
-            ch = _safe_input("  是否开启增量扫描模式？仅对新增CIDR网段执行探测 (y/n, 回车跳过): ", to_lower=True)
+            ch = _safe_input("  是否开启增量扫描模式？仅对新增CIDR网段执行探测（Y 确认 | 回车跳过）：", to_lower=True)
             a.incremental = ch == "y"
             if a.incremental:
                 print(c("  [已确认] 增量扫描 (对比上次CIDR，仅扫新增)", C.G))
@@ -921,7 +921,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     cfst_limit = _v if _v is not None else CFST_DEFAULT_LIMIT
 
     if not a.cfst:
-        ch = _safe_input(f"  是否启动测速择优流程？当前待检测 IP 总量 {len(ips)} 个（Y 确认 | N 终止 | 回车跳过）：", to_lower=True)
+        ch = _safe_input(f"  是否启动测速择优流程？当前待检测 IP 总量 {len(ips)} 条（Y 确认 | 回车跳过）：", to_lower=True)
         if ch != "y":
             print(c("  [已跳过] CloudflareSpeedTest 测速", C.LG))
             return
@@ -1696,7 +1696,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
 
     if not auto_mcis:
         if entries:
-            prefix_inp = _safe_input(f"  扩展网段维度 (默认/{prefix}): ")
+            prefix_inp = _safe_input(f"  扩展网段维度（默认/{prefix}）：")
             if prefix_inp:
                 try:
                     p = int(prefix_inp.lstrip("/"))
@@ -1707,7 +1707,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
             print(c(f"  扩展为 /{prefix} CIDR", C.NW))
 
     if not colo and not colo_exclude:
-        mode_inp = _safe_input("  CDN 机房过滤（Y 白名单 | N 黑名单 | 回车跳过）: ")
+        mode_inp = _safe_input("  CDN 机房过滤（Y 白名单 | N 黑名单 | 回车跳过）：")
         if mode_inp:
             m = mode_inp.strip().lower()
             if m in ("y", "白"):
@@ -2008,7 +2008,7 @@ def step_deep_mine(cfg: ScannerConfig) -> int:
         return 0
 
     print(f"  [当前结果统计] 完成校验的有效 IP: {len(existing)} 条")
-    ch = _safe_input("  是否启用深度网段挖掘？（Y 确认 | N 终止 | 回车跳过）：", to_lower=True)
+    ch = _safe_input("  是否启用深度网段挖掘？（Y 确认 | 回车跳过）：", to_lower=True)
     if ch != "y":
         print(c("  [已跳过] 深度挖掘", C.LG))
         return 0
