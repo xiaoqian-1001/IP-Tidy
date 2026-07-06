@@ -31,19 +31,20 @@ _EMPTY = "-"
 # ── ANSI 颜色（仅原生控制台色） ──
 
 class C:
-    R  = "\033[0m"       # reset
-    G  = "\033[32m"      # green (细)
-    LG = "\033[1;32m"    # bold green
-    W  = "\033[1;37m"    # bold white
-    Y  = "\033[33m"      # yellow (细)
-    LY = "\033[1;33m"    # bold yellow ─ warning
-    LB = "\033[1;36m"    # bold cyan
-    B  = "\033[34m"      # blue (细) ─ separator
-    LR = "\033[1;31m"    # bold red ─ error
-    LC = "\033[1;36m"    # bold cyan ─ step / title
-    CY = "\033[36m"      # cyan (细) ─ info
-    GY = "\033[90m"      # grey (细) ─ minor info
-    LM = "\033[1;35m"    # bold magenta ─ highlight / links
+    R  = "\033[0m"           # reset
+    G  = "\033[1;32m"        # bold green ─ success/pass
+    LG = "\033[1;32m"        # bold green
+    W  = "\033[1;37m"        # bold white ─ numbers/values
+    Y  = "\033[1;33m"        # bold yellow ─ warning/interactive
+    LY = "\033[1;33m"        # bold yellow
+    LB = "\033[38;5;81m"     # sky blue (#66ccff) ─ module names
+    B  = "\033[38;5;30m"     # dark teal (#226688) ─ separator
+    LR = "\033[1;31m"        # bold red ─ error
+    LC = "\033[1;38;5;51m"   # bright cyan (#00e0ff) ─ title/step
+    CY = "\033[38;5;81m"     # sky blue (#66ccff) ─ module names
+    GY = "\033[38;5;240m"    # dark gray ─ minor info
+    LM = "\033[1;35m"        # bold magenta ─ highlight/links
+    NW = "\033[37m"          # normal white/gray (#e8e8e8) ─ body text
 
 
 def c(text: str, color: str) -> str:
@@ -78,7 +79,7 @@ def print_banner(cpu: int = 0, mem: str = "", rate: int = 0,
     print(c(f"┌{line}┐", C.B))
     print(c(f"│{'':>{BW}}│", C.B))
     print(c(f"│{'':>{lp}}{title_full}{'':>{rp}}│", C.LC))
-    print(c(f"│{'':>{slp}}{sub}{'':>{srp}}│", C.W))
+    print(c(f"│{'':>{slp}}{sub}{'':>{srp}}│", C.NW))
     print(c(f"│{'':>{BW}}│", C.B))
     print(c(f"└{line}┘", C.B))
 
@@ -117,7 +118,7 @@ def print_hardware_info(cpu: int, mem_mb: int, rate: int,
 def write_progress(pct: float, extra: str = "") -> None:
     """显示 # 进度条"""
     filled = int(pct / 100 * BAR_WIDTH)
-    bar = c(_FILL * filled, C.G) + c(_EMPTY * (BAR_WIDTH - filled), C.W)
+    bar = c(_FILL * filled, C.G) + c(_EMPTY * (BAR_WIDTH - filled), C.NW)
     pct_s = f"{pct:5.1f}%".rjust(6)
     line = f"\r  [{bar}] {pct_s}{extra}"
     sys.stderr.write(line)

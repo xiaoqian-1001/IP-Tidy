@@ -186,7 +186,7 @@ def init_runtime() -> ScannerConfig:
         cfg.global_country = g.get("country", "")
         cfg.global_city = g.get("city", "")
         cfg.global_isp = g.get("isp", "")
-        print(c("  [GeoIP] 离线数据库 (MaxMind GeoLite2)", C.W))
+        print(c("  [GeoIP] 离线数据库 (MaxMind GeoLite2)", C.CY))
         print(c(f"  地区: {cfg.global_city}, {cfg.global_country}  机构: {cfg.global_isp}", C.GY))
     else:
         cfg.global_ip, cfg.global_country, cfg.global_isp, cfg.global_city = detect_isp(pub_ip)
@@ -362,7 +362,7 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
                 saved[key] = line
 
     port_count_val = port_count(WIDE_PORTS)
-    print(c(f"\n  深度扫描: {len(ips)} 个 IP × {port_count_val} 端口 ({cfg.masscan_rate} pps)", C.W))
+    print(c(f"\n  深度扫描: {len(ips)} 条 IP × {port_count_val} 端口 ({cfg.masscan_rate} pps)", C.W))
     print(c(f"  IP: {', '.join(sorted(ips)[:5])}{'...' if len(ips) > 5 else ''})", C.GY))
 
     ip_file = BASE / "deep_ips.txt"
@@ -458,7 +458,7 @@ def step_speed_test(cfg: ScannerConfig) -> None:
         f.write(header + "\n")
         for row, _ in results:
             f.write(row + "\n")
-    write_progress_done(f" | 测速完成: {total} 个 IP")
+    write_progress_done(f" | 测速完成: {total} 条 IP")
     elapsed = int(time.time() - step_start)
     m, s = divmod(elapsed, 60)
     print(c(f"  本步耗时: {m}分{s}秒" if m else f"  本步耗时: {s}秒", C.GY))
@@ -584,7 +584,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
             for c in v4_cidrs
         )
         if has_large:
-            print(c(f"  [INFO] 检测到大 CIDR (/{_SUBNET_THRESHOLD}+)，可启用智能子网分级探活", C.W))
+            print(c(f"  [INFO] 检测到大 CIDR (/{_SUBNET_THRESHOLD}+)，可启用智能子网分级探活", C.CY))
             ch = _safe_input("  是否启用智能子网分级？(y/n, 回车跳过): ", to_lower=True)
             if ch == "y":
                 a.smart = True
@@ -653,7 +653,7 @@ def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
         cfg.smart_mode = True
         steps.append((f"Step {step_num}  子网分级探活", lambda: _smart_wrapper(cfg)))
     if a.skip_masscan:
-        print(c("  (跳过 Masscan, 使用已有结果)", C.W))
+        print(c("  (跳过 Masscan, 使用已有结果)", C.NW))
     else:
         step_num += 1
         steps.append((f"Step {step_num}  基于 Masscan 执行端口扫描任务", lambda: step_masscan(cfg)))
@@ -816,7 +816,7 @@ def _ensure_cfst_binary() -> Path:
         _cfst_arch = "amd64"
 
     _url = f"https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/cfst_linux_{_cfst_arch}.tar.gz"
-    print(c(f"  [CFST] 下载 cfst 二进制... ({_url})", C.W))
+    print(c(f"  [CFST] 下载 cfst 二进制... ({_url})", C.CY))
 
     CFST_DIR.mkdir(parents=True, exist_ok=True)
     import tempfile, tarfile, urllib.request as _req
@@ -946,7 +946,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     cf_valid = [r for r in rtt_results if r.cf_ray]
     filtered = len(rtt_results) - len(cf_valid)
     if filtered:
-        print(c(f"  [RTT] 存在 {filtered} 个 IP 无法通过 CF-RAY 身份校验，识别为非 Cloudflare 官方节点，已执行过滤移除操作", C.LY))
+        print(c(f"  [RTT] 存在 {filtered} 条 IP 无法通过 CF-RAY 身份校验，识别为非 Cloudflare 官方节点，已执行过滤移除操作", C.Y))
 
     # 按 colo 分组，按比例分配各 colo 名额
     if cf_valid:
@@ -979,7 +979,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     result_file = BASE / f"cfst_{tag}_{ts}.csv"
 
-    print(c(f"  [CFST] 测速流程已初始化，将选取综合表现最优的前 {cfst_limit} 条 IP 执行测速检测", C.W))
+    print(c(f"  [CFST] 测速流程已初始化，将选取综合表现最优的前 {cfst_limit} 条 IP 执行测速检测", C.CY))
 
     import fcntl as _fcntl
 
@@ -1224,7 +1224,7 @@ def _ensure_mcis_binary() -> Path:
         _mcis_arch = "amd64"
 
     _api_url = "https://api.github.com/repos/Leo-Mu/montecarlo-ip-searcher/releases/latest"
-    print(c(f"  [MCIS] 查询最新版本...", C.W))
+    print(c(f"  [MCIS] 查询最新版本...", C.CY))
     try:
         with _req_m.urlopen(_api_url, timeout=15) as _resp:
             _data = _json.loads(_resp.read().decode("utf-8"))
@@ -1234,7 +1234,7 @@ def _ensure_mcis_binary() -> Path:
         raise OSError(f"mcis 版本查询失败: {_e}")
 
     _url = f"https://github.com/Leo-Mu/montecarlo-ip-searcher/releases/download/{_tag}/mcis-{_tag}-linux-{_mcis_arch}.tar.gz"
-    print(c(f"  [MCIS] 下载 mcis {_tag}", C.W))
+    print(c(f"  [MCIS] 下载 mcis {_tag}", C.CY))
 
     MCIS_DIR.mkdir(parents=True, exist_ok=True)
     import tempfile as _tmp_m, tarfile as _tar_m
@@ -1283,7 +1283,7 @@ def _ensure_ntrace_binary() -> Path:
         _nt_arch = "amd64"
 
     _api_url = "https://api.github.com/repos/nxtrace/NTrace-core/releases/latest"
-    print(c(f"  [NTR] 下载 NextTrace 最新版...", C.W))
+    print(c(f"  [NTR] 下载 NextTrace 最新版...", C.CY))
     try:
         with _req_n.urlopen(_api_url, timeout=15) as _resp:
             _data = _json.loads(_resp.read().decode("utf-8"))
@@ -1348,7 +1348,7 @@ def _expand_ips_to_cidrs(entries: list[str], prefix: int = 24) -> list[str]:
 def _resolve_mcis_cidrs(entries: list[str], prefix: int) -> list[str]:
     if entries:
         cidrs = _expand_ips_to_cidrs(entries, prefix)
-        print(c(f"  扩展: {len(entries)} IP -> {len(cidrs)} /{prefix} CIDR", C.W))
+        print(c(f"  扩展: {len(entries)} IP -> {len(cidrs)} /{prefix} CIDR", C.NW))
         return cidrs
     cidr_file = BASE / "cidrs_v4.txt"
     if not cidr_file.exists() or cidr_file.stat().st_size == 0:
@@ -1357,7 +1357,7 @@ def _resolve_mcis_cidrs(entries: list[str], prefix: int) -> list[str]:
             print(c("  无 IP 源，跳过", C.LY))
             return []
     cidr_list = [l.strip() for l in cidr_file.read_text().splitlines() if l.strip()]
-    print(c(f"  [MCIS] 读取 CIDR 网段文件 | 共载入 {len(cidr_list)} 条网段", C.W))
+    print(c(f"  [MCIS] 读取 CIDR 网段文件 | 共载入 {len(cidr_list)} 个网段", C.CY))
     return cidr_list
 
 
@@ -1704,7 +1704,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
                         prefix = p
                 except ValueError:
                     pass
-            print(c(f"  扩展为 /{prefix} CIDR", C.W))
+            print(c(f"  扩展为 /{prefix} CIDR", C.NW))
 
     if not colo and not colo_exclude:
         mode_inp = _safe_input("  CDN 机房过滤（Y 白名单 | N 黑名单 | 回车跳过）: ")
@@ -1726,7 +1726,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
     _params = f"预算 {budget} | 并发 {concurrency} | 搜索头 {heads} | 波束 {beam} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
     if entries:
         _params = f"网段维度 {prefix} | {_params}"
-    print(c(f"  运行参数：{_params}", C.W))
+    print(c(f"  运行参数：{_params}", C.NW))
 
     try:
         mcis_bin = _ensure_mcis_binary()
@@ -1910,7 +1910,7 @@ def main() -> None:
         do_speed, do_deep, do_mcis = _interactive_choices(a, v4_cidrs, asns)
     else:
         do_speed, do_deep, do_mcis = False, False, True
-        print(c("  [MCIS] 快速模式: 跳过扫描，直接执行蒙特卡洛搜索", C.W))
+        print(c("  [MCIS] 快速模式: 跳过扫描，直接执行蒙特卡洛搜索", C.CY))
     steps = _build_steps(a, cfg, asns, v4_cidrs, do_speed, do_deep, do_mcis)
     _cleanup_temp_files(a)
 
@@ -1993,7 +1993,7 @@ def main() -> None:
     print_result_header(
         len(asns), cidr_count_val, total_open, cf_nodes, passed_count, v4_cidr_count,
     )
-    print_sep("-", C.W)
+    print_sep("-", C.NW)
     print_total_time(time.time() - main_start)
 
     if csv_path and csv_path.exists():
@@ -2181,7 +2181,7 @@ def _serve_download(file_path: Path) -> None:
                 port += 1
             if port >= HTTP_SERVER_PORT_RANGE_END:
                 print(c("  无可用端口，跳过下载服务", C.LY))
-                print(c(f"  [CSV] {file_path}", C.W))
+                print(c(f"  [CSV] {file_path}", C.LM))
                 return
 
     server: Optional[subprocess.Popen] = None
@@ -2209,7 +2209,7 @@ def _serve_download(file_path: Path) -> None:
             except (KeyboardInterrupt, EOFError):
                 pass
         else:
-            print(c("  (非交互终端，按 Ctrl+C 停止服务)", C.W))
+            print(c("  (非交互终端，按 Ctrl+C 停止服务)", C.NW))
             try:
                 server.wait(timeout=86400)
             except KeyboardInterrupt:
