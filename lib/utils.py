@@ -31,20 +31,20 @@ _EMPTY = "-"
 # ── ANSI 颜色（仅原生控制台色） ──
 
 class C:
-    R  = "\033[0m"           # reset
-    G  = "\033[1;32m"        # bold green ─ success/pass
-    LG = "\033[1;32m"        # bold green
-    W  = "\033[1;37m"        # bold white ─ numbers/values
-    Y  = "\033[1;33m"        # bold yellow ─ warning/interactive
-    LY = "\033[1;33m"        # bold yellow
-    LB = "\033[38;5;81m"     # sky blue (#66ccff) ─ module names
-    B  = "\033[38;5;30m"     # dark teal (#226688) ─ separator
-    LR = "\033[1;31m"        # bold red ─ error
-    LC = "\033[1;38;5;51m"   # bright cyan (#00e0ff) ─ title/step
-    CY = "\033[38;5;81m"     # sky blue (#66ccff) ─ module names
-    GY = "\033[38;5;240m"    # dark gray ─ minor info
-    LM = "\033[1;35m"        # bold magenta ─ highlight/links
-    NW = "\033[37m"          # normal white/gray (#e8e8e8) ─ body text
+    R  = "\033[0m"       # reset
+    G  = "\033[1;32m"    # bold green ─ success/pass
+    LG = "\033[1;32m"    # bold green
+    W  = "\033[1;37m"    # bold white ─ numbers/values
+    Y  = "\033[1;33m"    # bold yellow ─ warning/interactive
+    LY = "\033[1;33m"    # bold yellow
+    LB = "\033[1;34m"    # bold blue ─ module names
+    B  = "\033[34m"      # blue ─ separator
+    LR = "\033[1;31m"    # bold red ─ error
+    LC = "\033[1;36m"    # bold cyan ─ title/step
+    CY = "\033[1;34m"    # bold blue ─ module names
+    GY = "\033[90m"      # dark gray ─ minor info
+    LM = "\033[1;35m"    # bold magenta ─ highlight/links
+    NW = "\033[37m"      # normal white/gray ─ body text
 
 
 def c(text: str, color: str) -> str:
