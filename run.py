@@ -1707,13 +1707,17 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
             print(c(f"  扩展为 /{prefix} CIDR", C.W))
 
     if not colo and not colo_exclude:
-        colo_inp = _safe_input("  CDN 机房白名单 (逗号分隔, 回车跳过): ")
-        if colo_inp:
-            colo = colo_inp.strip().upper()
-        else:
-            excl_inp = _safe_input("  CDN 机房黑名单 (逗号分隔, 回车跳过): ")
-            if excl_inp:
-                colo_exclude = excl_inp.strip().upper()
+        mode_inp = _safe_input("  CDN 机房过滤 (w=白名单 b=黑名单, 回车跳过): ")
+        if mode_inp:
+            m = mode_inp.strip().lower()
+            if m in ("w", "白"):
+                val_inp = _safe_input("  白名单机房代码 (逗号分隔): ")
+                if val_inp:
+                    colo = val_inp.strip().upper()
+            elif m in ("b", "黑"):
+                val_inp = _safe_input("  黑名单机房代码 (逗号分隔): ")
+                if val_inp:
+                    colo_exclude = val_inp.strip().upper()
 
     cidrs = _resolve_mcis_cidrs(entries, prefix)
     if not cidrs:
