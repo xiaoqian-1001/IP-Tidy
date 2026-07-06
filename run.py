@@ -589,7 +589,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
             for c in v4_cidrs
         )
         if has_large:
-            print(c(f"  [INFO] 检测到大 CIDR (/{_SUBNET_THRESHOLD}+)，可启用智能子网分级探活", C.CY))
+            print(c(f"  [INFO] 检测到维度较高 CIDR (/{_SUBNET_THRESHOLD}+)，可启用智能子网分级探活", C.CY))
             ch = _safe_input("  是否启用智能子网分级？（Y 确认 | 回车跳过）：", to_lower=True)
             if ch == "y":
                 a.smart = True
