@@ -595,7 +595,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
                 a.smart = True
                 print(c("  [已确认] 智能子网分级探活 (拆分 /24 抽样)", C.G))
             else:
-                print(c("  [已跳过] 智能子网分级 (全量扫描)", C.LY))
+                print(c("  [已跳过] 智能子网分级", C.LY))
 
     do_speed = a.speed
     do_deep = a.deep
