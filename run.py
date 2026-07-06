@@ -607,7 +607,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
         if ch == "y":
             a.mcis_only = True
             do_mcis = True
-            print(c("  [已启用] 蒙特卡洛探测", C.G))
+            print(c("  [已启用] Monte Carlo IP 搜索探测", C.G))
             return do_speed, do_deep, do_mcis
     if not do_speed:
         ts = _safe_input("  是否启用全量测速？（Y 确认 | 回车跳过）：", to_lower=True)
