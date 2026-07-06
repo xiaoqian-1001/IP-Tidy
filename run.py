@@ -531,24 +531,26 @@ def _resolve_port_mode(a, cfg, sys_args: list[str]) -> bool:
         print(f"  默认端口：{cfg.scan_ports}")
         print(f"  宽端口池：{WIDE_PORTS}")
         try:
-            inp = _safe_input("  端口模式（回车=默认端口 | w=宽端口 | r=随机5个端口 | 直接输入=自定义端口）：", to_lower=True)
+            inp = _safe_input("  端口模式（1.默认端口 | 2.宽端口池 | 3.随机端口/数量5 | 4.自定义端口 | 回车默认）：", to_lower=True)
         except (EOFError, KeyboardInterrupt):
             inp = ""
-        if inp == "w":
+        if inp == "2":
             cfg.scan_ports = WIDE_PORTS
             cfg.masscan_rate = max(500, cfg.masscan_rate // 2)
             port_mode_name = "宽端口池"
             print(f"  宽端口模式: {port_count(cfg.scan_ports)} 端口 ({cfg.masscan_rate} pps)")
-        elif inp == "r":
+        elif inp == "3":
             cfg.scan_ports = random_ports()
-            port_mode_name = "随机5个端口"
+            port_mode_name = "随机端口/数量5"
             print(f"  随机端口: {cfg.scan_ports}")
-        elif inp:
-            parsed = parse_ports(inp)
-            if parsed:
-                cfg.scan_ports = parsed
-                port_mode_name = "自定义端口"
-                print(f"  扫描端口: {cfg.scan_ports}")
+        elif inp == "4":
+            cust = _safe_input("  自定义端口 (逗号分隔, 如 80,443,8000-9000): ")
+            if cust:
+                parsed = parse_ports(cust)
+                if parsed:
+                    cfg.scan_ports = parsed
+                    port_mode_name = "自定义端口"
+                    print(f"  扫描端口: {cfg.scan_ports}")
         else:
             try:
                 probe = _safe_input("  是否启用随机端口探活？启用请输入探测数量取值范围1-100（回车跳过）：")
