@@ -1331,7 +1331,7 @@ def _trace_route(ip: str, timeout: int = 10) -> str:
         )
         output = result.stdout + result.stderr
     except (subprocess.TimeoutExpired, OSError):
-        return "超时"
+        return "-"
 
     asns = set(re.findall(r"AS(\d+)", output))
     for asn, label in _ROUTE_TABLE.items():
