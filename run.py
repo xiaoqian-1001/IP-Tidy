@@ -694,7 +694,7 @@ def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
     step_num = 1
     if a.mcis_only:
         step_num += 1
-        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=True, colo=a.colo, colo_exclude=a.colo_exclude)))
+        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=True, colo=a.colo, colo_exclude=a.colo_exclude, do_route_trace=not a.no_route)))
         return steps
     if a.smart:
         step_num += 1
@@ -711,7 +711,7 @@ def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
     steps.append((f"Step {step_num}  IP 深度挖掘探测", lambda: step_deep_mine(cfg)))
     if do_mcis:
         step_num += 1
-        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=a.mcis, colo=a.colo, colo_exclude=a.colo_exclude)))
+        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=a.mcis, colo=a.colo, colo_exclude=a.colo_exclude, do_route_trace=not a.no_route)))
     elif do_speed:
         step_num += 1
         steps.append((f"Step {step_num}  网络延迟/带宽速率检测", lambda: step_speed_test(cfg)))
@@ -1393,65 +1393,29 @@ def _expand_ips_to_cidrs(entries: list[str], prefix: int = 24) -> list[str]:
     return sorted(cidr_set)
 
 
-def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "", colo_exclude: str = "") -> int:
-    step_start = time.time()
-    verified_file = BASE / "verified.txt"
-    entries = _read_verified_entries()
-    if not entries:
-        cidr_file = BASE / "cidrs_v4.txt"
-        if not cidr_file.exists() or cidr_file.stat().st_size == 0:
-            cidr_file = BASE / "cidrs.txt"
-            if not cidr_file.exists() or cidr_file.stat().st_size == 0:
-                print(c("  无 IP 源，跳过", C.LY))
-                return 0
-        cidr_list = [l.strip() for l in cidr_file.read_text().splitlines() if l.strip()]
-        print(c(f"  [MCIS] 读取 CIDR 网段文件 | 共载入 {len(cidr_list)} 条网段", C.W))
-
-    prefix = 24
-    concurrency = 200
-    heads = 4
-    beam = 32
-    top = 20
-    download_top = 5
-    host = ""
-
-    if not auto_mcis:
-        if entries:
-            prefix_inp = _safe_input(f"  扩展网段维度 (默认/{prefix}): ")
-            if prefix_inp:
-                try:
-                    p = int(prefix_inp.lstrip("/"))
-                    if 8 <= p <= 32:
-                        prefix = p
-                except ValueError:
-                    pass
-            print(c(f"  扩展为 /{prefix} CIDR", C.W))
-
-    if not colo:
-        colo_inp = _safe_input("  CDN 机房白名单 (逗号分隔, 回车跳过): ")
-        if colo_inp:
-            colo = colo_inp.strip().upper()
-    if not colo_exclude:
-        excl_inp = _safe_input("  CDN 机房黑名单 (逗号分隔, 回车跳过): ")
-        if excl_inp:
-            colo_exclude = excl_inp.strip().upper()
-
+def _resolve_mcis_cidrs(entries: list[str], prefix: int) -> list[str]:
     if entries:
         cidrs = _expand_ips_to_cidrs(entries, prefix)
         print(c(f"  扩展: {len(entries)} IP -> {len(cidrs)} /{prefix} CIDR", C.W))
-    else:
-        cidrs = cidr_list
+        return cidrs
+    cidr_file = BASE / "cidrs_v4.txt"
+    if not cidr_file.exists() or cidr_file.stat().st_size == 0:
+        cidr_file = BASE / "cidrs.txt"
+        if not cidr_file.exists() or cidr_file.stat().st_size == 0:
+            print(c("  无 IP 源，跳过", C.LY))
+            return []
+    cidr_list = [l.strip() for l in cidr_file.read_text().splitlines() if l.strip()]
+    print(c(f"  [MCIS] 读取 CIDR 网段文件 | 共载入 {len(cidr_list)} 条网段", C.W))
+    return cidr_list
 
-    budget = 3000
 
-    _params = f"预算 {budget} | 并发 {concurrency} | 搜索头 {heads} | 波束 {beam} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
-    if entries:
-        _params = f"网段维度 {prefix} | {_params}"
-    print(c(f"  运行参数：{_params}", C.W))
-    try:
-        mcis_bin = _ensure_mcis_binary()
-    except OSError:
-        return 0
+def _run_mcis_process(
+    mcis_bin: Path,
+    cidrs: list[str],
+    budget: int, concurrency: int, heads: int, beam: int, top: int, download_top: int,
+    colo: str = "", colo_exclude: str = "",
+) -> tuple[str, Path] | None:
+    import fcntl as _fcntl
 
     cidr_file = BASE / ".mcis_cidrs.txt"
     cidr_file.write_text("\n".join(cidrs) + "\n")
@@ -1473,8 +1437,6 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
         "--out-file", str(result_file),
         "-v",
     ]
-    if host:
-        cmd.extend(["--host", host])
     if colo:
         cmd.extend(["--colo", colo])
     if colo_exclude:
@@ -1483,8 +1445,6 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
     for _old in BASE.glob("mcis_result_*.csv"):
         _bkp = _old.with_suffix(_old.suffix + ".bkp")
         _old.rename(_bkp)
-
-    import fcntl as _fcntl
 
     proc = subprocess.Popen(
         cmd,
@@ -1520,7 +1480,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
             proc.stdout.close()
             write_progress_done(" | MCIS 超时终止")
             cidr_file.unlink(missing_ok=True)
-            return 0
+            return None
 
         if proc.poll() is not None:
             try:
@@ -1593,7 +1553,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
             proc.stdout.close()
             write_progress_done(" | MCIS 探测(无有效 IP)")
             cidr_file.unlink(missing_ok=True)
-            return 0
+            return None
         if not _progress_now and _last_pct > 0 and time.time() - _last_progress_time > 3:
             _wait_label = "带宽测速中" if _seen_dl else "等待中"
             write_progress(_last_pct, f" | MCIS {_wait_label}...")
@@ -1602,14 +1562,19 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
 
     proc.stdout.close()
     write_progress_done(" | MCIS 探测完成")
-
     cidr_file.unlink(missing_ok=True)
 
     if proc.returncode != 0:
         print()
         print(c(f"  [FAIL] mcis 返回码 {proc.returncode}", C.LR))
-        return 0
+        return None
 
+    return _buffer.decode("utf-8", errors="replace"), result_file
+
+
+def _parse_mcis_to_verified(
+    buffer_text: str, result_file: Path,
+) -> tuple[list[tuple[str, str, str, str, str, str]], list[str], dict[str, dict[str, str]]] | None:
     import csv as _csv
 
     _rows: list[list[str]] = []
@@ -1628,19 +1593,18 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
 
     if not _rows:
         print(c("  [MCIS] 结果文件为空或无有效数据", C.LY))
-        _raw_tail = _buffer.decode("utf-8", errors="replace").rsplit("\n", 6)
+        _raw_tail = buffer_text.rsplit("\n", 6)
         if len(_raw_tail) > 1:
             for _l in _raw_tail[:-1]:
                 _l = _l.strip()
                 if _l:
                     print(c(f"  [MCIS]    {_l}", C.LY))
-        return 0
+        return None
 
     _dl_map: dict[str, dict[str, str]] = {}
-    _dl_text = _buffer.decode("utf-8", errors="replace")
     for _dl in re.finditer(
         r"download:\s*rank=\d+\s+ip=(\S+)\s+ok=(\S+)\s+mbps=(\S+)\s+ms=(\S+)",
-        _dl_text,
+        buffer_text,
     ):
         _dl_ip = _dl.group(1)
         _dl_map[_dl_ip] = {"ok": _dl.group(2), "mbps": _dl.group(3), "ms": _dl.group(4)}
@@ -1736,41 +1700,122 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
             _prefix = _rw[_prefix_col].strip()
         _display_rows.append((_ip, _lat, _spd, _prefix, _colo, ""))
 
+    return _display_rows, _result_lines, _dl_map
+
+
+def _trace_routes_concurrent(
+    display_rows: list[tuple[str, str, str, str, str, str]],
+) -> list[tuple[str, str, str, str, str, str]]:
+    total = len(display_rows)
+    _idx_map: dict[int, str] = {}
+
+    def _trace_one(idx: int, ip: str) -> tuple[int, str]:
+        return idx, _trace_route(ip)
+
+    with ThreadPoolExecutor(max_workers=min(20, total)) as _ex:
+        _futures: dict[Any, int] = {}
+        for _i, _row in enumerate(display_rows):
+            _futures[_ex.submit(_trace_one, _i, _row[0])] = _i
+        _done = 0
+        for _f in as_completed(_futures):
+            _i, _route = _f.result()
+            _idx_map[_i] = _route
+            _done += 1
+            write_progress(_done / total * 100, f" | 路由追踪 ({_done}/{total})")
+
+    _traced: list[tuple[str, str, str, str, str, str]] = []
+    for _i, _row in enumerate(display_rows):
+        _traced.append((_row[0], _row[1], _row[2], _row[3], _row[4], _idx_map.get(_i, "")))
+
+    write_progress_done(" | 路由追踪完成")
+    return _traced
+def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "", colo_exclude: str = "", do_route_trace: bool = True) -> int:
+    step_start = time.time()
+    verified_file = BASE / "verified.txt"
+    entries = _read_verified_entries()
+
+    prefix = 24
+    concurrency = 200
+    heads = 4
+    beam = 32
+    top = 20
+    download_top = 5
+    budget = 3000
+
+    if not auto_mcis:
+        if entries:
+            prefix_inp = _safe_input(f"  扩展网段维度 (默认/{prefix}): ")
+            if prefix_inp:
+                try:
+                    p = int(prefix_inp.lstrip("/"))
+                    if 8 <= p <= 32:
+                        prefix = p
+                except ValueError:
+                    pass
+            print(c(f"  扩展为 /{prefix} CIDR", C.W))
+
+    if not colo and not colo_exclude:
+        colo_inp = _safe_input("  CDN 机房白名单 (逗号分隔, 回车跳过): ")
+        if colo_inp:
+            colo = colo_inp.strip().upper()
+        else:
+            excl_inp = _safe_input("  CDN 机房黑名单 (逗号分隔, 回车跳过): ")
+            if excl_inp:
+                colo_exclude = excl_inp.strip().upper()
+
+    cidrs = _resolve_mcis_cidrs(entries, prefix)
+    if not cidrs:
+        return 0
+
+    _params = f"预算 {budget} | 并发 {concurrency} | 搜索头 {heads} | 波束 {beam} | 保留 TOP{top} | 带宽测速 TOP{download_top}"
+    if entries:
+        _params = f"网段维度 {prefix} | {_params}"
+    print(c(f"  运行参数：{_params}", C.W))
+
+    try:
+        mcis_bin = _ensure_mcis_binary()
+    except OSError:
+        return 0
+
+    result = _run_mcis_process(mcis_bin, cidrs, budget, concurrency, heads, beam, top, download_top, colo, colo_exclude)
+    if result is None:
+        return 0
+    buffer_text, result_file = result
+
+    parsed = _parse_mcis_to_verified(buffer_text, result_file)
+    if parsed is None:
+        return 0
+    display_rows, result_lines, dl_map = parsed
+
     _header = "IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN,协议"
     with open(verified_file, "w", encoding="utf-8") as f:
         f.write(_header + "\n")
-        for _line in _result_lines:
+        for _line in result_lines:
             f.write(_line + "\n")
 
-    if _dl_map:
-        _dl_ok = sum(1 for v in _dl_map.values() if v["ok"] == "true")
-        _dl_total = len(_dl_map)
+    if dl_map:
+        _dl_ok = sum(1 for v in dl_map.values() if v["ok"] == "true")
+        _dl_total = len(dl_map)
         print(c(f"  [MCIS] 带宽测速 | 通过率: {_dl_ok * 100 // _dl_total}% ({_dl_ok}/{_dl_total})", C.G if _dl_ok > 0 else C.LY))
         if _dl_ok == 0:
             print(c("         测速全部失败不代表 IP 不可用，MCIS 内置测速受网络环境影响较大，", C.LY))
             print(c("         延迟低的 IP 手动测速通常正常，建议以延迟为准筛选", C.LY))
 
-    if _display_rows:
-        _display_rows.sort(key=lambda r: (r[2] == "", float(r[1]) if r[1] else 99999))
-        if _dl_map and _dl_ok == 0:
+    if display_rows:
+        display_rows.sort(key=lambda r: (r[2] == "", float(r[1]) if r[1] else 99999))
+        _dl_ok = sum(1 for v in dl_map.values() if v["ok"] == "true") if dl_map else 0
+        if do_route_trace and not (dl_map and _dl_ok == 0):
+            display_rows = _trace_routes_concurrent(display_rows)
+        elif dl_map and _dl_ok == 0:
             print(c("  [NTR] 带宽测速全失败，跳过路由分析", C.LY))
-        else:
-            _traced: list[tuple[str, str, str, str, str, str]] = []
-            for _i, _row in enumerate(_display_rows):
-                _ip = _row[0]
-                write_progress((_i + 1) / len(_display_rows) * 100, f" | 路由追踪 ({_i + 1}/{len(_display_rows)})")
-                _route = _trace_route(_ip)
-                _traced.append((_row[0], _row[1], _row[2], _row[3], _row[4], _route))
-            _display_rows = _traced
-            write_progress_done(" | 路由追踪完成")
 
         print_sep("─", C.B)
-        print(c(f"  蒙特卡洛 IP 择优探测结果｜合计获取 {len(_display_rows)} 条替换 IP", C.LC))
+        print(c(f"  蒙特卡洛 IP 择优探测结果｜合计获取 {len(display_rows)} 条替换 IP", C.LC))
         _mcis_hdr = ("  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 8, '<') +
                      "  " + _pad_cjk("速度(MB/s)", 14, '<') + "  " + _pad_cjk("地区码", 8, '<') +
                      "  " + _pad_cjk("所属网段", 16, '<') + "  " + _pad_cjk("线路", 6, '<'))
         print(c(_mcis_hdr, C.W))
-        for _i, (_ip, _lat, _spd, _prefix, _colo, _route) in enumerate(_display_rows):
+        for _i, (_ip, _lat, _spd, _prefix, _colo, _route) in enumerate(display_rows):
             if _i == 0:
                 _color = C.LG
             elif _i < 3:
@@ -1788,7 +1833,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
                      "  " + _pad_cjk(_prefix, 16, '<') + "  " + c(_pad_cjk(_route, 6, '<'), _r_color))
             print(c(_line, _color))
 
-        _top_prefixes = list(dict.fromkeys(p for _, _, _, p, _, _ in _display_rows[:5] if p))
+        _top_prefixes = list(dict.fromkeys(p for _, _, _, p, _, _ in display_rows[:5] if p))
         if _top_prefixes:
             print(c(f"  TOP5 IP 所属网段：{'、'.join(_top_prefixes)}", C.G))
 
@@ -1796,7 +1841,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
         _bkp.unlink(missing_ok=True)
     result_file.unlink(missing_ok=True)
 
-    total_count = len(_result_lines)
+    total_count = len(result_lines)
     elapsed = int(time.time() - step_start)
     m, s = divmod(elapsed, 60)
     if entries:
@@ -1809,6 +1854,8 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
         print(c(f"  [MCIS] {summary}, 本步耗时: {elapsed}秒", C.G))
 
     return total_count
+
+
 
 
 def main() -> None:
@@ -1858,6 +1905,8 @@ def main() -> None:
                         help="MCIS CDN 机房白名单，例: HKG,SJC")
     parser.add_argument("--colo-exclude", metavar="CODES", type=str, default="",
                         help="MCIS CDN 机房黑名单，例: LAX,DFW")
+    parser.add_argument("--no-route", action="store_true",
+                        help="MCIS 跳过路由追踪分析")
     a = parser.parse_args()
     a.mcis_only = False
     if a.targets and a.targets[0].lower() == "mcis":
