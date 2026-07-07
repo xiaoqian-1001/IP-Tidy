@@ -1775,9 +1775,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
         print(c(f"  Monte Carlo IP 择优探测结果｜总计获取 {len(display_rows)} 条替换 IP", C.LC))
         _mcis_hdr = ("  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 8, '<') +
                      "  " + _pad_cjk("速度(MB/s)", 14, '<') + "  " + _pad_cjk("地区码", 8, '<') +
-                     "  " + _pad_cjk("所属网段", 16, '<'))
-        if _traced:
-            _mcis_hdr += "  " + _pad_cjk("线路", 6, '<')
+                     "  " + _pad_cjk("所属网段", 16, '<') + "  " + _pad_cjk("线路", 6, '<'))
         print(c(_mcis_hdr, C.W))
         for _i, _row in enumerate(display_rows):
             _ip, _lat, _spd, _prefix, _colo, _route = _row
@@ -1787,18 +1785,17 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
                 _color = C.LY
             else:
                 _color = C.W
-            if _traced:
-                if "精品" in _route:
-                    _r_color = C.LG
-                elif "优化" in _route:
-                    _r_color = C.LY
-                else:
-                    _r_color = C.W
+            _route_display = _route or "-"
+            if "精品" in _route_display:
+                _r_color = C.LG
+            elif "优化" in _route_display:
+                _r_color = C.LY
+            else:
+                _r_color = C.W
             _line = ("  " + _pad_cjk(_ip, 18, '<') + "  " + _pad_cjk(_lat, 8, '<') +
                      "  " + _pad_cjk(_spd or "-", 14, '<') + "  " + _pad_cjk(_colo.upper(), 8, '<') +
-                     "  " + _pad_cjk(_prefix, 16, '<'))
-            if _traced:
-                _line += "  " + c(_pad_cjk(_route, 6, '<'), _r_color)
+                     "  " + _pad_cjk(_prefix, 16, '<') + "  " +
+                     c(_pad_cjk(_route_display, 6, '<'), _r_color))
             print(c(_line, _color))
 
         _top_prefixes = list(dict.fromkeys(p for _, _, _, p, _, _ in display_rows[:5] if p))
