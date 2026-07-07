@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from lib.utils import write_progress, write_progress_done
+from lib.scanner_utils import CSV_HEADER
 
 MAX_RETRIES = 2
 RETRY_CODES = frozenset({429, 502, 503, 504})
@@ -69,7 +70,8 @@ def _check_one(ip_port: str, api_url: str) -> Optional[str]:
             api_latency = data.get("responseTime", "")
 
         ip, port = ip_port.rsplit(":", 1)
-        return f"{ip},{port},TRUE,{colo},{country},{region},{api_latency},,AS{asn}"
+        proto = "IPv6" if ":" in ip else "IPv4"
+        return f"{ip},{port},TRUE,{colo},{country},{region},{api_latency},,AS{asn},{proto}"
     return None
 
 
@@ -114,14 +116,13 @@ def main() -> None:
     start = time.time()
 
     mode = "a" if args.append else "w"
-    header = "IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN\n"
     with open(args.output, mode) as out:
         if args.append:
             existing = Path(args.output).exists() and Path(args.output).stat().st_size > 0
             if not existing:
-                out.write(header)
+                out.write(CSV_HEADER + "\n")
         else:
-            out.write(header)
+            out.write(CSV_HEADER + "\n")
         with ThreadPoolExecutor(max_workers=args.concurrent) as ex:
             for i in range(0, total, args.chunk):
                 chunk = lines[i:i + args.chunk]

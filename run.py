@@ -36,7 +36,7 @@ from lib.scanner_utils import (
     read_default_ports, parse_targets, expand_cidrs, port_count,
     split_port_batches, adjust_concurrency, random_ports, random_probe_ports,
     WIDE_PORTS, cidr_count,
-    CF_SCANNER, VERIFY_PY, API_URL, _MASSCAN_BATCH,
+    CF_SCANNER, VERIFY_PY, API_URL, MASSCAN_BATCH, CSV_HEADER,
     load_incremental_state, save_incremental_state, compute_cidr_diff, _incr_tag, INCR_DIR,
 )
 from lib.scanner_pipeline import (
@@ -53,9 +53,6 @@ except OSError:
     pass
 
 _SUBNET_THRESHOLD = 20
-
-
-_CSV_HEADER = "IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN,协议"
 
 
 def _format_csv_line(parts: list[str], do_geo: bool = False) -> str:
@@ -86,7 +83,7 @@ def _run_masscan_batches(ip_file: Path, ports_def: str, rate: int,
     batches = split_port_batches(ports_def)
     total_ports = port_count(ports_def)
     if len(batches) > 1:
-        print(c(f"  端口总数 {total_ports} -> {len(batches)} 批次扫描 (~{_MASSCAN_BATCH}/批)", C.GY))
+        print(c(f"  端口总数 {total_ports} -> {len(batches)} 批次扫描 (~{MASSCAN_BATCH}/批)", C.GY))
 
     all_open: list[str] = []
     batch_total = len(batches)
@@ -352,7 +349,7 @@ def step_deep_scan(cfg: ScannerConfig) -> int:
         return 0
 
     saved: dict[str, str] = {}
-    saved_header = _CSV_HEADER
+    saved_header = CSV_HEADER
     if verified_file.exists() and verified_file.stat().st_size > 0:
         with open(verified_file, encoding="utf-8") as f:
             for line in f:
@@ -745,7 +742,7 @@ def _generate_csv(verified_file: Path, asns: list[str], a,
                 parsed.append(line)
 
     with open(csv_path, "w", encoding="utf-8-sig") as f:
-        f.write(_CSV_HEADER + "\n")
+        f.write(CSV_HEADER + "\n")
         for p in parsed:
             parts = p.split(",")
             f.write(_format_csv_line(parts, do_geo=True) + "\n")
@@ -769,7 +766,7 @@ def _generate_csv(verified_file: Path, asns: list[str], a,
             merged[key] = line
         merged_lines = sorted(merged.values())
         with open(csv_path, "w", encoding="utf-8-sig") as f:
-            f.write(_CSV_HEADER + "\n")
+            f.write(CSV_HEADER + "\n")
             for p in merged_lines:
                 f.write(_format_csv_line(p.split(",")) + "\n")
         print(c(f"  合并: {len(incr_saved_results) - 1} 历史 + {new_count} 新增 -> {len(merged)} 条", C.CY))
@@ -1738,9 +1735,8 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
         return 0
     display_rows, result_lines, dl_map = parsed
 
-    _header = "IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN,协议"
     with open(verified_file, "w", encoding="utf-8") as f:
-        f.write(_header + "\n")
+        f.write(CSV_HEADER + "\n")
         for _line in result_lines:
             f.write(_line + "\n")
 

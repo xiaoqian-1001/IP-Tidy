@@ -12,8 +12,7 @@ from typing import Optional, Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .scanner_utils import (
-    BASE, CF_SCANNER, VERIFY_PY, API_URL, WIDE_PORTS, MASSCAN_BIN,
-    _MASSCAN_BATCH,
+    BASE, CF_SCANNER, VERIFY_PY, API_URL, WIDE_PORTS, MASSCAN_BIN, MASSCAN_BATCH,
     merge_cidrs, parse_masscan_xml,
     subnet_split, quick_probe, sample_ips,
     port_count, split_port_batches,
@@ -115,7 +114,7 @@ def run_masscan(cidr_file: Path, ports_str: str, rate: int,
     sudo = [] if os.geteuid() == 0 else ["sudo", "-n"]
 
     if is_multi and progress_callback:
-        progress_callback("log", f"Masscan: {total_ports} 端口 -> {len(batches)} 批次 (~{_MASSCAN_BATCH}/批)")
+        progress_callback("log", f"Masscan: {total_ports} 端口 -> {len(batches)} 批次 (~{MASSCAN_BATCH}/批)")
 
     for bi, batch_ports in enumerate(batches):
         batch_xml = BASE / f".masscan_{_tag}_b{bi+1}.xml" if is_multi else BASE / f".masscan_{_tag}.xml"

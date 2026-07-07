@@ -26,7 +26,9 @@ VERIFY_PY = BASE / "verify.py"
 API_URL = os.environ.get("IP_TIDY_API_URL", "https://api.090227.xyz/check")
 WIDE_PORTS = "912,22,80,443,8080,8443,2053,2083,2087,2096,10000-65535"
 MASSCAN_BIN = shutil.which("masscan") or "/usr/local/bin/masscan"
-_MASSCAN_BATCH = 5000
+MASSCAN_BATCH = 5000
+
+CSV_HEADER = "IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN,协议"
 
 _SPEED_TESTS = [
     ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=1048576",   1,   "1MB"),
@@ -201,13 +203,13 @@ def split_port_batches(port_str: str) -> list[str]:
                 pa = pb = 0
         else:
             n = 1
-        if cur + n > _MASSCAN_BATCH and current:
+        if cur + n > MASSCAN_BATCH and current:
             batches.append(",".join(current))
             current = []
             cur = 0
-        if n > _MASSCAN_BATCH:
-            for start in range(pa, pb + 1, _MASSCAN_BATCH):
-                end = min(start + _MASSCAN_BATCH - 1, pb)
+        if n > MASSCAN_BATCH:
+            for start in range(pa, pb + 1, MASSCAN_BATCH):
+                end = min(start + MASSCAN_BATCH - 1, pb)
                 batches.append(f"{start}-{end}")
         else:
             current.append(seg)
@@ -545,7 +547,7 @@ def expand_cidrs(cidrs: list[str], max_ips: int = 5000,
     return ips
 
 
-def parse_targets(raw_args: list[str]) -> tuple[list[str], list[str], list[str]]:
+def parse_targets(raw_args: list[str]) -> tuple[list[str], list[str]]:
     raw = ""
     if not raw_args:
         try:
