@@ -1,6 +1,7 @@
 """IP-Tidy 共享管道层 -- 扫描步骤，通过 progress_callback 报告进度"""
 
 import os
+import re
 import sys
 import json
 import time
