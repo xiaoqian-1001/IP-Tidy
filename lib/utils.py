@@ -63,7 +63,7 @@ def print_banner() -> None:
     except OSError:
         ver = ""
     BW = 60
-    line = "─" * BW
+    line = "-" * BW
     title = "IP-Tidy"
     title_full = f"{title} {ver}" if ver else title
     tl = len(title_full)
@@ -74,24 +74,24 @@ def print_banner() -> None:
     slp = (BW - sl) // 2
     srp = BW - slp - sl
     print()
-    print(c(f"┌{line}┐", C.B))
-    print(c(f"│{' ' * BW}│", C.B))
-    print(c(f"│{'':>{lp}}{title_full}{'':>{rp}}│", C.LC))
-    print(c(f"│{'':>{slp}}{sub}{'':>{srp}}│", C.NW))
-    print(c(f"│{' ' * BW}│", C.B))
-    print(c(f"└{line}┘", C.B))
+    print(c(f"+{line}+", C.B))
+    print(c(f"|{' ' * BW}|", C.B))
+    print(c(f"|{'':>{lp}}{title_full}{'':>{rp}}|", C.LC))
+    print(c(f"|{'':>{slp}}{sub}{'':>{srp}}|", C.NW))
+    print(c(f"|{' ' * BW}|", C.B))
+    print(c(f"+{line}+", C.B))
 
 
 def print_step(label: str) -> None:
     """打印步骤标题"""
-    sep = c("─" * 60, C.B)
+    sep = c("-" * 60, C.B)
     title = c(f"  {label}", C.LC)
     print(sep)
     print(title)
     print(sep)
 
 
-def print_sep(char: str = "─", color: str = C.B, width: int = 60) -> None:
+def print_sep(char: str = "-", color: str = C.B, width: int = 60) -> None:
     """打印分隔符"""
     print(c(char * width, color))
 
@@ -110,7 +110,7 @@ def print_hardware_info(cpu: int, mem_mb: int, rate: int,
     if org:
         loc = city if city else ""
         print(c(f"  [环境]  {loc}  |  {org}", C.GY))
-    print_sep("─", C.B)
+    print_sep("-", C.B)
 
 
 def write_progress(pct: float, extra: str = "") -> None:
@@ -148,12 +148,12 @@ def print_result_header(total_asn: int, total_cidr: int,
     cidr_info = str(total_cidr)
     if v4_cidr:
         cidr_info += f" (IPV4={v4_cidr})"
-    print_sep("─", C.B)
+    print_sep("-", C.B)
     print(c("  [TASK COMPLETE]", C.LG))
     print(c(f"  ASN: {total_asn}  |  CIDR: {cidr_info}  |  "
             f"Open Ports: {total_open}  |  CF Nodes: {cf_nodes}  |  "
             f"Passed: {passed}", C.W))
-    print_sep("─", C.B)
+    print_sep("-", C.B)
 
 
 def print_total_time(elapsed: float) -> None:

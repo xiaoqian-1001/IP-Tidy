@@ -1163,7 +1163,7 @@ def _run_cfst_speedtest(a, tag: str) -> None:
                 _writer.writerow(_rw)
     print(c("  [SCORE] 加权评分重排完毕，公式: speed / (1 + 0.01*latency + 0.02*jitter)", C.G))
 
-    print_sep("─", C.B)
+    print_sep("-", C.B)
     print(c(f"  CloudflareSpeedTest 测速优选结果｜按加权评分排序，合计 {len(_scored)} 条最优 IP", C.LC))
     if not _scored:
         print(c("  (无下载速度 > 0 的 IP，可能网络环境不稳定或 CFST 参数需调整)", C.LY))
@@ -1490,10 +1490,10 @@ def _run_mcis_process(
         if _probes_done and _last_best >= 6000 and not _warned_no_ip:
             _warned_no_ip = True
             print()
-            print_sep("─", C.LR)
+            print_sep("-", C.LR)
             print(c("  [MCIS] 探测完成但未发现有效 IP (best 仍为 6000ms)", C.LR))
             print(c("         终止测验、跳过下载测速", C.LR))
-            print_sep("─", C.LR)
+            print_sep("-", C.LR)
             proc.terminate()
             try:
                 proc.wait(timeout=10)
@@ -1765,7 +1765,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
                 display_rows = _trace_routes_concurrent(display_rows)
                 _traced = True
 
-        print_sep("─", C.B)
+        print_sep("-", C.B)
         print(c(f"  Monte Carlo IP 择优探测结果｜总计获取 {len(display_rows)} 条替换 IP", C.LC))
         _mcis_hdr = ("  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 8, '<') +
                      "  " + _pad_cjk("速度(MB/s)", 14, '<') + "  " + _pad_cjk("地区码", 8, '<') +
@@ -2203,7 +2203,7 @@ def _serve_download(file_path: Path) -> None:
         tmpdir = Path(tempfile.mkdtemp(prefix="cf-speed-dns-"))
         (tmpdir / file_path.name).symlink_to(file_path.resolve())
 
-        print_sep("─", C.B)
+        print_sep("-", C.B)
         print(c("  任务执行完毕，文件下载服务已成功启动", C.LG))
         print(c(f"  http://{lan_ip}:{port}/{file_path.name}", C.LM))
         pub = get_public_ip()
