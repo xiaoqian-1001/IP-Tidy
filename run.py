@@ -1980,7 +1980,9 @@ def main() -> None:
             print(c("\n  [中断] 用户取消", C.LR))
             sys.exit(SIGINT_EXIT_CODE)
         except Exception as e:
+            import traceback
             print(c(f"  [FAIL] 步骤失败: {e}", C.LR))
+            traceback.print_exc()
             continue
 
     verified_file = BASE / "verified.txt"
@@ -2189,9 +2191,7 @@ def _serve_download(file_path: Path) -> None:
                 return
 
     server: Optional[subprocess.Popen] = None
-    tmpdir: Optional[Path] = None
     try:
-        import tempfile
         tmpdir = Path(tempfile.mkdtemp(prefix="cf-speed-dns-"))
         (tmpdir / file_path.name).symlink_to(file_path.resolve())
 

@@ -7,6 +7,7 @@ import time
 import json
 import random
 import socket
+import tempfile
 import ipaddress
 import threading
 import subprocess
@@ -76,21 +77,21 @@ def subnet_split(cidr: str) -> list[str]:
 
 def quick_probe(ip: str, port: int, timeout: float) -> bool:
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(timeout)
-        result = s.connect_ex((ip, port))
-        s.close()
-        return result == 0
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(timeout)
+            return s.connect_ex((ip, port)) == 0
     except OSError:
         return False
 
 
 def sample_ips(subnet: str, n: int) -> list[str]:
     net = ipaddress.ip_network(subnet, strict=False)
-    hosts = list(net.hosts())
-    if len(hosts) <= n:
-        return [str(h) for h in hosts]
-    return [str(h) for h in random.sample(hosts, n)]
+    first = int(net.network_address)
+    last = int(net.broadcast_address)
+    count = last - first - 1
+    if count <= n:
+        return [str(ipaddress.IPv4Address(first + i + 1)) for i in range(count)]
+    return [str(ipaddress.IPv4Address(first + idx + 1)) for idx in random.sample(range(count), n)]
 
 
 def random_ports(n: int = 5) -> str:
@@ -179,7 +180,8 @@ def parse_masscan_xml(xml_path: Path) -> list[str]:
                 if ip and portid:
                     results.append(f"{ip}:{portid}")
     except ET.ParseError:
-        pass
+        import sys
+        print("  [WARN] Masscan XML 解析失败，可能文件不完整", file=sys.stderr)
     return results
 
 
@@ -315,9 +317,8 @@ def probe_masscan_rate(quiet: bool = False) -> int:
     if not quiet:
         print("  探测 Masscan 最优扫描速率：", end="", flush=True)
     sample_cidrs = ["1.1.1.0/24", "8.8.8.0/24", "9.9.9.0/24"]
-    tmp_cidr = "/tmp/.masscan_rate_test"
-    tx_path = f"/sys/class/net/{iface}/statistics/tx_packets"
-    with open(tmp_cidr, "w") as f:
+    tmp_cidr_fd, tmp_cidr = tempfile.mkstemp(prefix="masscan-rate-", text=True)
+    with os.fdopen(tmp_cidr_fd, "w") as f:
         f.write("\n".join(sample_cidrs))
     best_rate, test_rate, probe_sec = 2000, 1000, 4
     try:
@@ -374,13 +375,11 @@ def probe_masscan_rate(quiet: bool = False) -> int:
 
 def tcp_latency(ip: str, port: int, timeout: float = 5) -> int:
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(timeout)
-        t0 = time.time()
-        s.connect((ip, port))
-        lat = round((time.time() - t0) * 1000)
-        s.close()
-        return lat
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(timeout)
+            t0 = time.time()
+            s.connect((ip, port))
+            return round((time.time() - t0) * 1000)
     except (OSError, socket.timeout):
         return 0
 

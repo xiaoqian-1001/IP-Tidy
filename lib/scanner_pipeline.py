@@ -2,14 +2,13 @@
 
 import os
 import sys
-import re
-import time
 import json
-import ipaddress
+import time
 import subprocess
-import urllib.request, urllib.error
+import urllib.request
+import tempfile
 from pathlib import Path
-from typing import Optional, Callable, Any
+from typing import Optional, Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .scanner_utils import (
@@ -87,6 +86,7 @@ def resolve_asn_cidrs(asns: list[str], v4_cidrs: list[str],
                 if progress_callback:
                     progress_callback("log", f"AS{asn} -> {len(pv4)}v4")
             else:
+                cache[ck] = {"ts": now_ts, "v4_count": 0, "v4": []}
                 if progress_callback:
                     progress_callback("log", f"AS{asn} -> API 返回空")
         except (urllib.error.URLError, json.JSONDecodeError, ValueError) as e:
@@ -106,6 +106,7 @@ def resolve_asn_cidrs(asns: list[str], v4_cidrs: list[str],
 def run_masscan(cidr_file: Path, ports_str: str, rate: int,
                 progress_callback: Optional[Callable] = None,
                 sid: str = "") -> list[str]:
+    _tag = sid or str(os.getpid())
     total_ports = port_count(ports_str)
     batches = split_port_batches(ports_str)
     is_multi = len(batches) > 1
@@ -117,7 +118,7 @@ def run_masscan(cidr_file: Path, ports_str: str, rate: int,
         progress_callback("log", f"Masscan: {total_ports} 端口 -> {len(batches)} 批次 (~{_MASSCAN_BATCH}/批)")
 
     for bi, batch_ports in enumerate(batches):
-        batch_xml = BASE / f".masscan_{sid}_b{bi+1}.xml" if is_multi else BASE / ".masscan_result.xml"
+        batch_xml = BASE / f".masscan_{_tag}_b{bi+1}.xml" if is_multi else BASE / f".masscan_{_tag}.xml"
         cmd = sudo + [MASSCAN_BIN,
                       "-iL", str(cidr_file),
                       "-p", batch_ports,
@@ -219,8 +220,9 @@ def verify_batch(entries: list[str], concurrency: int = 32,
                  sid: str = "") -> list[dict]:
     if not entries:
         return []
-    inp = BASE / f".vf_in_{sid}.txt"
-    out = BASE / f".vf_out_{sid}.txt"
+    _tag = sid or str(os.getpid())
+    inp = BASE / f".vf_in_{_tag}.txt"
+    out = BASE / f".vf_out_{_tag}.txt"
     inp.write_text("\n".join(entries))
 
     if progress_callback:
@@ -285,7 +287,7 @@ def smart_subnet_probe(v4_cidrs: list[str],
     alive_subs: set[str] = set()
     total_samples = 0
     fmap: dict = {}
-    with ThreadPoolExecutor(max_workers=min(total_subs * SUBNET_PROBE, threads * 4)) as ex:
+    with ThreadPoolExecutor(max_workers=min(total_subs * SUBNET_PROBE, threads, 200)) as ex:
         for sub in to_probe:
             for ip in sample_ips(sub, SUBNET_PROBE):
                 total_samples += 1
@@ -294,7 +296,7 @@ def smart_subnet_probe(v4_cidrs: list[str],
         for future in as_completed(fmap):
             sub = fmap[future]
             done += 1
-            if done % 100 == 0 and progress_callback:
+            if (done % 100 == 0 or done == total_samples) and progress_callback:
                 progress_callback("scan_progress", {"current": done, "total": total_samples, "stage": "智能探活"})
             try:
                 if future.result():

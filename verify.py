@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import time
+import threading
 import urllib.request
 import urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,6 +20,8 @@ from lib.utils import write_progress, write_progress_done
 
 MAX_RETRIES = 2
 RETRY_CODES = frozenset({429, 502, 503, 504})
+
+_write_lock = threading.Lock()
 
 
 def _check_one(ip_port: str, api_url: str) -> Optional[str]:
@@ -39,14 +42,12 @@ def _check_one(ip_port: str, api_url: str) -> Optional[str]:
                 continue
             return None
         except (urllib.error.URLError, OSError):
-            if attempt < MAX_RETRIES:
-                time.sleep(min(2 ** attempt, 8))
-                continue
-            return None
+            time.sleep(min(2 ** attempt, 8))
+            continue
         except json.JSONDecodeError:
             return None
 
-        if not data.get("success"):
+        if not isinstance(data, dict) or not data.get("success"):
             return None
 
         pr = data.get("probe_results") or {}
@@ -121,26 +122,30 @@ def main() -> None:
                 out.write(header)
         else:
             out.write(header)
-        for i in range(0, total, args.chunk):
-            chunk = lines[i:i + args.chunk]
-            with ThreadPoolExecutor(max_workers=args.concurrent) as ex:
+        with ThreadPoolExecutor(max_workers=args.concurrent) as ex:
+            for i in range(0, total, args.chunk):
+                chunk = lines[i:i + args.chunk]
                 futures = [ex.submit(_check_one, ip, args.api) for ip in chunk]
                 for f in as_completed(futures):
-                    r = f.result()
+                    try:
+                        r = f.result()
+                    except Exception:
+                        continue
                     if r:
-                        out.write(r + "\n")
+                        with _write_lock:
+                            out.write(r + "\n")
                         passed += 1
                         if passed % 100 == 0:
                             out.flush()
-            out.flush()
+                out.flush()
 
-            elapsed = time.time() - start
-            done = i + len(chunk)
-            rate = done / elapsed if elapsed > 0 else 0
-            eta_min = (total - done) / rate / 60 if rate > 0 else 0
-            eta_m, eta_s = divmod(int(eta_min * 60), 60)
-            last_extra = f" | 通过 {passed}/{total} | ETA {eta_m}分{eta_s}秒 | API精筛"
-            write_progress(done / total * 100, last_extra)
+                elapsed = time.time() - start
+                done = i + len(chunk)
+                rate = done / elapsed if elapsed > 0 else 0
+                eta_min = (total - done) / rate / 60 if rate > 0 else 0
+                eta_m, eta_s = divmod(int(eta_min * 60), 60)
+                last_extra = f" | 通过 {passed}/{total} | ETA {eta_m}分{eta_s}秒 | API精筛"
+                write_progress(done / total * 100, last_extra)
 
     elapsed = int(time.time() - start)
     ep = f"{elapsed // 60}分{elapsed % 60}秒"
