@@ -13,12 +13,12 @@ from typing import Optional, Callable, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .scanner_utils import (
-    BASE, CF_SCANNER, VERIFY_PY, API_URL, WIDE_PORTS,
+    BASE, CF_SCANNER, VERIFY_PY, API_URL, WIDE_PORTS, MASSCAN_BIN,
     _MASSCAN_BATCH,
     merge_cidrs, parse_masscan_xml,
     subnet_split, quick_probe, sample_ips,
     port_count, split_port_batches,
-    masscan_adapter_ip, masscan_bin,
+    masscan_adapter_ip,
     read_masscan_stderr,
     SUBNET_PROBE, SUBNET_THRESHOLD, SUBNET_PORT, SUBNET_TIMEOUT,
 )
@@ -118,7 +118,7 @@ def run_masscan(cidr_file: Path, ports_str: str, rate: int,
 
     for bi, batch_ports in enumerate(batches):
         batch_xml = BASE / f".masscan_{sid}_b{bi+1}.xml" if is_multi else BASE / ".masscan_result.xml"
-        cmd = sudo + [masscan_bin(),
+        cmd = sudo + [MASSCAN_BIN,
                       "-iL", str(cidr_file),
                       "-p", batch_ports,
                       "--rate", str(rate),
@@ -312,34 +312,6 @@ def smart_subnet_probe(v4_cidrs: list[str],
     return alive_cidrs
 
 
-def run_speed_test(ip: str, port: int) -> str:
-    return _run_speed_test_impl(ip, port)
-
-
-def _run_speed_test_impl(ip: str, port: int) -> str:
-    best = 0.0
-    for host, url, size_mb, _ in [
-        ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=1048576", 1, "1MB"),
-        ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=10485760", 10, "10MB"),
-        ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=100000000", 100, "100MB"),
-    ]:
-        try:
-            timeout = 15 if size_mb < 100 else 45
-            r = subprocess.run([
-                "curl", "--resolve", f"speed.cloudflare.com:{port}:{ip}",
-                "-o", "/dev/null", "-s", "-w", "%{speed_download}",
-                "--connect-timeout", "5", "--max-time", str(timeout), url,
-            ], capture_output=True, text=True, timeout=timeout + 10)
-            mbps = round(float(r.stdout.strip() or 0) * 8 / 1_000_000, 2)
-            if mbps > best:
-                best = mbps
-        except (subprocess.TimeoutExpired, OSError, ValueError):
-            continue
-    if best > 0:
-        return f"{best:.2f} MB/s"
-    return "N/A"
-
-
 def enrich_geoip(results: list[dict]) -> None:
     try:
         from .geoip import lookup as geo_lookup, is_available as geo_available
@@ -359,11 +331,3 @@ def enrich_geoip(results: list[dict]) -> None:
                     r["isp"] = info["isp"]
         except (KeyError, TypeError):
             pass
-
-
-def geo_available() -> bool:
-    try:
-        from .geoip import is_available as _ga
-        return _ga()
-    except Exception:
-        return False

@@ -291,15 +291,7 @@ def masscan_adapter_ip() -> Optional[str]:
 
 
 def masscan_bin() -> str:
-    return shutil_which("masscan") or MASSCAN_BIN
-
-
-def shutil_which(cmd: str) -> Optional[str]:
-    try:
-        import shutil
-        return shutil.which(cmd)
-    except (ImportError, OSError):
-        return None
+    return MASSCAN_BIN
 
 
 def probe_masscan_rate(quiet: bool = False) -> int:
@@ -380,11 +372,6 @@ def probe_masscan_rate(quiet: bool = False) -> int:
     return best_rate
 
 
-def probe_masscan_rate_fast() -> int:
-    cores = os.cpu_count() or 1
-    return max(1000, min(cores * 1000, 16000))
-
-
 def tcp_latency(ip: str, port: int, timeout: float = 5) -> int:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -396,27 +383,6 @@ def tcp_latency(ip: str, port: int, timeout: float = 5) -> int:
         return lat
     except (OSError, socket.timeout):
         return 0
-
-
-def http_latency(ip: str, port: int = 443, timeout: float = 5) -> int:
-    try:
-        url = f"http://{ip}:{port}/"
-        req = urllib.request.Request(url, method="HEAD")
-        t0 = time.time()
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            elapsed = round((time.time() - t0) * 1000)
-        return elapsed
-    except (OSError, socket.timeout):
-        try:
-            url = f"https://{ip}:{port}/"
-            req = urllib.request.Request(url, method="HEAD")
-            ctx = ssl_create_unverified()
-            t0 = time.time()
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-                elapsed = round((time.time() - t0) * 1000)
-            return elapsed
-        except (OSError, socket.timeout):
-            return 0
 
 
 def ssl_create_unverified():
@@ -553,23 +519,6 @@ def read_default_ports(ports_file: Optional[Path] = None) -> str:
         if ports:
             return ",".join(ports)
     return "443,8443,2053,2083,2087,2096"
-
-
-def resolve_port_list(port_mode: str, custom_ports: str,
-                      ports_file: Optional[Path] = None) -> str:
-    if port_mode == "default":
-        return read_default_ports(ports_file)
-    elif port_mode == "wide":
-        return WIDE_PORTS
-    elif port_mode == "random":
-        return random_ports()
-    elif port_mode == "custom":
-        parsed = custom_ports.strip()
-        if parsed:
-            return parsed
-        return read_default_ports(ports_file)
-    else:
-        return read_default_ports(ports_file)
 
 
 def expand_cidrs(cidrs: list[str], max_ips: int = 5000,

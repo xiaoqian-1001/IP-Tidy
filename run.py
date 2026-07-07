@@ -494,18 +494,6 @@ def _parse_custom_port(args: list[str]) -> Optional[str]:
     return None
 
 
-def _print_visualization(csv_path: Path) -> None:
-    entries: list[str] = []
-    with open(csv_path, encoding="utf-8") as f:
-        next(f)
-        for line in f:
-            line = line.strip()
-            if line.count(",") >= 8:
-                entries.append(line)
-    if not entries:
-        return
-
-
 def _resolve_port_mode(a, cfg, sys_args: list[str]) -> bool:
     probe_added = False
     port_mode_name = "默认端口"
@@ -2005,7 +1993,7 @@ def main() -> None:
     if not do_mcis:
         _run_cfst_speedtest(a, cfst_tag)
     else:
-        print(c("  [MCIS] 蒙特卡洛探测已采集完整速率数据，无需执行 CFST 测速，自动跳过", C.G))
+        print(c("  [MCIS] Monte Carlo IP 搜索探测已采集完整速率数据，无需执行 CFST 测速，自动跳过", C.G))
 
     print_result_header(
         len(asns), cidr_count_val, total_open, cf_nodes, passed_count, v4_cidr_count,
@@ -2014,7 +2002,6 @@ def main() -> None:
     print_total_time(time.time() - main_start)
 
     if csv_path and csv_path.exists():
-        _print_visualization(csv_path)
         _serve_download(csv_path)
 
 
