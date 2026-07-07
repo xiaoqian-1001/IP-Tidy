@@ -639,7 +639,7 @@ def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
     step_num = 1
     if a.mcis_only:
         step_num += 1
-        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=True, colo=a.colo, colo_exclude=a.colo_exclude, do_route_trace=not a.no_route)))
+        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=True, colo=a.colo, colo_exclude=a.colo_exclude, do_route_trace=not a.no_route, download_url=a.mcis_url, host=a.mcis_host)))
         total = len(steps)
         steps = [(f"{lbl.replace('Step ', f'Step {i+1}/{total}  ')}", fn) for i, (lbl, fn) in enumerate(steps)]
         return steps
@@ -658,7 +658,7 @@ def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
     steps.append((f"Step {step_num}  IP 深度挖掘探测", lambda: step_deep_mine(cfg)))
     if do_mcis:
         step_num += 1
-        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=a.mcis, colo=a.colo, colo_exclude=a.colo_exclude, do_route_trace=not a.no_route)))
+        steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=a.mcis, colo=a.colo, colo_exclude=a.colo_exclude, do_route_trace=not a.no_route, download_url=a.mcis_url, host=a.mcis_host)))
     elif do_speed:
         step_num += 1
         steps.append((f"Step {step_num}  网络延迟/带宽速率检测", lambda: step_speed_test(cfg)))
@@ -1363,6 +1363,7 @@ def _run_mcis_process(
     cidrs: list[str],
     budget: int, concurrency: int, heads: int, beam: int, top: int, download_top: int,
     colo: str = "", colo_exclude: str = "",
+    download_url: str = "", host: str = "",
 ) -> tuple[str, Path] | None:
     import fcntl as _fcntl
 
@@ -1390,6 +1391,10 @@ def _run_mcis_process(
         cmd.extend(["--colo", colo])
     if colo_exclude:
         cmd.extend(["--colo-exclude", colo_exclude])
+    if download_url:
+        cmd.extend(["--download-url", download_url])
+    if host:
+        cmd.extend(["--host", host])
 
     for _old in BASE.glob("mcis_result_*.csv"):
         _bkp = _old.with_suffix(_old.suffix + ".bkp")
@@ -1678,7 +1683,8 @@ def _trace_routes_concurrent(
 
     write_progress_done(" | 路由追踪完成")
     return _traced
-def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "", colo_exclude: str = "", do_route_trace: bool = True) -> int:
+def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "", colo_exclude: str = "", do_route_trace: bool = True,
+                    download_url: str = "", host: str = "") -> int:
     step_start = time.time()
     verified_file = BASE / "verified.txt"
     entries = _read_verified_entries()
@@ -1730,7 +1736,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
     except OSError:
         return 0
 
-    result = _run_mcis_process(mcis_bin, cidrs, budget, concurrency, heads, beam, top, download_top, colo, colo_exclude)
+    result = _run_mcis_process(mcis_bin, cidrs, budget, concurrency, heads, beam, top, download_top, colo, colo_exclude, download_url, host)
     if result is None:
         return 0
     buffer_text, result_file = result
@@ -1869,6 +1875,11 @@ def main() -> None:
                         help="MCIS CDN 机房黑名单，例: LAX,DFW")
     parser.add_argument("--no-route", action="store_true",
                         help="MCIS 跳过路由追踪分析")
+    parser.add_argument("--mcis-url", metavar="URL", type=str, default="",
+                        help="MCIS 自定义测速文件地址 (默认: 使用 IP 443 端口的 /__down?bytes=50000000)")
+    parser.add_argument("--mcis-host", metavar="HOST", type=str, default="",
+                        help="MCIS 自定义 host 域名 (用于 TLS SNI 和 HTTP Host 头)")
+    a = parser.parse_args()
     a = parser.parse_args()
     a.mcis_only = False
     if a.targets and a.targets[0].lower() == "mcis":

@@ -17,7 +17,7 @@ from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 __all__ = [
-    "BAR_WIDTH", "write_progress", "write_progress_done",
+    "BAR_WIDTH", "SEP_WIDTH", "write_progress", "write_progress_done",
     "get_public_ip", "get_lan_ip", "detect_isp",
     "parse_ports", "port_is_free", "kill_port_process",
     "c", "C", "print_banner", "print_step", "print_sep",
