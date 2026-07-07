@@ -2003,7 +2003,6 @@ def main() -> None:
     print_result_header(
         len(asns), cidr_count_val, total_open, cf_nodes, passed_count, v4_cidr_count,
     )
-    print_sep("─", C.B)
     print_total_time(time.time() - main_start)
 
     if csv_path and csv_path.exists():
