@@ -69,7 +69,7 @@ def print_banner() -> None:
     tl = len(title_full)
     lp = (BW - tl) // 2
     rp = BW - lp - tl
-    sub = "ASN → CIDR → Masscan → TLS → CF CSV"
+    sub = "ASN -> CIDR -> Masscan -> TLS -> CF CSV"
     sl = len(sub)
     slp = (BW - sl) // 2
     srp = BW - slp - sl
