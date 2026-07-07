@@ -1877,8 +1877,8 @@ def main() -> None:
                         help="MCIS 跳过路由追踪分析")
     parser.add_argument("--mcis-url", metavar="URL", type=str, default="https://xn--e1a.eu.org/300.zip",
                         help="MCIS 自定义测速文件地址 (默认: https://xn--e1a.eu.org/300.zip)")
-    parser.add_argument("--mcis-host", metavar="HOST", type=str, default="",
-                        help="MCIS 自定义 host 域名 (用于 TLS SNI 和 HTTP Host 头)")
+    parser.add_argument("--mcis-host", metavar="HOST", type=str, default="xn--e1a.eu.org",
+                        help="MCIS 自定义 host 域名 (用于 TLS SNI 和 HTTP Host 头，默认: xn--e1a.eu.org)")
     a = parser.parse_args()
     a = parser.parse_args()
     a.mcis_only = False
