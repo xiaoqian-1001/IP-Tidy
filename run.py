@@ -7,6 +7,7 @@ import sys
 import os
 import re
 import time
+import tempfile
 import ipaddress
 import argparse
 import subprocess
@@ -2198,6 +2199,7 @@ def _serve_download(file_path: Path) -> None:
                 return
 
     server: Optional[subprocess.Popen] = None
+    tmpdir: Optional[Path] = None
     try:
         tmpdir = Path(tempfile.mkdtemp(prefix="cf-speed-dns-"))
         (tmpdir / file_path.name).symlink_to(file_path.resolve())
