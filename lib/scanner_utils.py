@@ -320,6 +320,7 @@ def probe_masscan_rate(quiet: bool = False) -> int:
     tmp_cidr_fd, tmp_cidr = tempfile.mkstemp(prefix="masscan-rate-", text=True)
     with os.fdopen(tmp_cidr_fd, "w") as f:
         f.write("\n".join(sample_cidrs))
+    tx_path = f"/sys/class/net/{iface}/statistics/tx_packets"
     best_rate, test_rate, probe_sec = 2000, 1000, 4
     try:
         while test_rate <= 200000:
