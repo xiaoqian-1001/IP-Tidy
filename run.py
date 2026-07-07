@@ -1983,7 +1983,9 @@ def main() -> None:
             import traceback
             print(c(f"  [FAIL] 步骤失败: {e}", C.LR))
             traceback.print_exc()
-            continue
+            ch = _safe_input("  是否继续执行后续步骤？（结果可能不完整 | Y 继续 | 回车终止）：", to_lower=True)
+            if ch != "y":
+                sys.exit(1)
 
     verified_file = BASE / "verified.txt"
     csv_path, passed_count = _generate_csv(verified_file, asns, a,
@@ -2004,7 +2006,12 @@ def main() -> None:
     print_total_time(time.time() - main_start)
 
     if csv_path and csv_path.exists():
-        _serve_download(csv_path)
+        with open(csv_path, encoding="utf-8") as _f:
+            _data_lines = sum(1 for _ in _f) - 1
+        if _data_lines > 0:
+            _serve_download(csv_path)
+        else:
+            print(c(f"  [CSV] 无有效结果，跳过下载服务: {csv_path}", C.LY))
 
 
 def step_deep_mine(cfg: ScannerConfig) -> int:
