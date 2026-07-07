@@ -41,7 +41,7 @@ class C:
     B  = "\033[34m"      # blue ─ separator
     LR = "\033[1;31m"    # bold red ─ error
     LC = "\033[1;36m"    # bold cyan ─ title/step
-    CY = "\033[1;34m"    # bold blue ─ module names
+    CY = "\033[1;36m"    # bold cyan ─ module tags
     GY = "\033[90m"      # dark gray ─ minor info
     LM = "\033[1;35m"    # bold magenta ─ highlight/links
     NW = "\033[37m"      # normal white/gray ─ body text
@@ -55,18 +55,16 @@ def c(text: str, color: str) -> str:
 
 # ── 美化输出 ──
 
-def print_banner(cpu: int = 0, mem: str = "", rate: int = 0,
-                 cf_c: int = 0, api_c: int = 0,
-                 city: str = "", org: str = "") -> None:
-    """打印顶部标题 + 硬件信息区块"""
+def print_banner() -> None:
+    """打印顶部标题区块"""
     try:
         vp = Path(__file__).resolve().parent.parent / "VERSION"
         ver = vp.read_text().strip() if vp.is_file() else ""
     except OSError:
         ver = ""
-    BW = 68
+    BW = 60
     line = "─" * BW
-    title = "LITTLE MONEY ASN NSD TOOL"
+    title = "IP-Tidy"
     title_full = f"{title} {ver}" if ver else title
     tl = len(title_full)
     lp = (BW - tl) // 2
@@ -77,10 +75,10 @@ def print_banner(cpu: int = 0, mem: str = "", rate: int = 0,
     srp = BW - slp - sl
     print()
     print(c(f"┌{line}┐", C.B))
-    print(c(f"│{'':>{BW}}│", C.B))
+    print(c(f"│{' ' * BW}│", C.B))
     print(c(f"│{'':>{lp}}{title_full}{'':>{rp}}│", C.LC))
     print(c(f"│{'':>{slp}}{sub}{'':>{srp}}│", C.NW))
-    print(c(f"│{'':>{BW}}│", C.B))
+    print(c(f"│{' ' * BW}│", C.B))
     print(c(f"└{line}┘", C.B))
 
 

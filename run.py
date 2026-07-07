@@ -588,7 +588,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
     do_deep = a.deep
     do_mcis = a.mcis
     if not do_speed and not do_deep and not do_mcis:
-        ch = _safe_input("  是否跳过扫描流程执行 Monte Carlo IP 搜索探测？（Y 确认 | 回车跳过）：", to_lower=True)
+        ch = _safe_input("  是否执行 MCIS 快捷搜索？（跳过扫描流程，直接搜索 IP | Y 确认 | 回车跳过）：", to_lower=True)
         if ch == "y":
             a.mcis_only = True
             do_mcis = True
@@ -609,7 +609,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
         elif do_deep:
             print(c("  [已启用] 深度扫描", C.G))
     if not do_mcis:
-        ch = _safe_input("  是否启用 Monte Carlo IP 搜索探测？（Y 确认 | 回车跳过）：", to_lower=True)
+        ch = _safe_input("  是否执行 MCIS 增强探测？（扫描完成后附加 IP 搜索结果 | Y 确认 | 回车跳过）：", to_lower=True)
         do_mcis = ch == "y"
         if do_mcis:
             print(c("  [已启用] Monte Carlo IP 搜索探测", C.G))
@@ -639,6 +639,8 @@ def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
     if a.mcis_only:
         step_num += 1
         steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=True, colo=a.colo, colo_exclude=a.colo_exclude, do_route_trace=not a.no_route)))
+        total = len(steps)
+        steps = [(f"{lbl.replace('Step ', f'Step {i+1}/{total}  ')}", fn) for i, (lbl, fn) in enumerate(steps)]
         return steps
     if a.smart:
         step_num += 1
@@ -662,6 +664,8 @@ def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
     if do_deep:
         step_num += 1
         steps.append((f"Step {step_num}  深度宽端口扫描", lambda: step_deep_scan(cfg)))
+    total = len(steps)
+    steps = [(f"{lbl.replace('Step ', f'Step {i+1}/{total}  ')}", fn) for i, (lbl, fn) in enumerate(steps)]
     return steps
 
 
@@ -1818,15 +1822,15 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
 def main() -> None:
     main_start = time.time()
     parser = argparse.ArgumentParser(
-        prog="qian",
+        prog="ip-tidy",
         description=f"IP-Tidy {VERSION} -- CIDR/ASN -> masscan -> CF IP 检测",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="示例:\n"
-               "  qian AS209242\n"
-               "  qian AS209242 -w -s\n"
-               "  qian 1.2.3.0/24,5.6.7.0/24\n"
-               "  qian AS209242 -w -r 4000\n"
-               "  qian mcis AS209242       # 快捷模式: 跳过扫描直接 MCIS 搜索")
+               "  ip-tidy AS209242\n"
+               "  ip-tidy AS209242 -w -s\n"
+               "  ip-tidy 1.2.3.0/24,5.6.7.0/24\n"
+               "  ip-tidy AS209242 -w -r 4000\n"
+               "  ip-tidy mcis AS209242       # 快捷模式: 跳过扫描直接 MCIS 搜索")
     parser.add_argument("targets", nargs="*", help="ASN 编号 或 CIDR (可多个，空格或逗号分隔)")
     parser.add_argument("-p", "--ports", metavar="PORTS",
                         help="自定义扫描端口 (如 443 或 80,443 或 8000-9000)")
