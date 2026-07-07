@@ -53,6 +53,8 @@ def c(text: str, color: str) -> str:
     return text
 
 
+SEP_WIDTH = 62
+
 # ── 美化输出 ──
 
 def print_banner() -> None:
@@ -84,14 +86,14 @@ def print_banner() -> None:
 
 def print_step(label: str) -> None:
     """打印步骤标题"""
-    sep = c("-" * 60, C.B)
+    sep = c("-" * SEP_WIDTH, C.B)
     title = c(f"  {label}", C.LC)
     print(sep)
     print(title)
     print(sep)
 
 
-def print_sep(char: str = "-", color: str = C.B, width: int = 60) -> None:
+def print_sep(char: str = "-", color: str = C.B, width: int = SEP_WIDTH) -> None:
     """打印分隔符"""
     print(c(char * width, color))
 
