@@ -5,6 +5,7 @@ import re
 import sys
 import json
 import time
+import ipaddress
 import subprocess
 import urllib.request
 import tempfile
