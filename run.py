@@ -1257,20 +1257,12 @@ NTRACE_DIR = MCIS_DIR
 NTRACE_BIN = NTRACE_DIR / "nexttrace"
 
 _ROUTE_TABLE = {
-    "4809": "精品",
-    "9929": "精品",
-    "58807": "精品",
-    "4812": "优化",
-    "58453": "优化",
-    "4134": "优化",
-    "4837": "优化",
-    "4538": "优化",
-    "38008": "优化",
-    "23724": "优化",
-    "56040": "优化",
-    "56041": "优化",
-    "56046": "优化",
-    "134542": "优化",
+    "58807": "CMIN2",
+    "4809": "CN2",
+    "9929": "CUII",
+    "58453": "CMI",
+    "4134": "163",
+    "4837": "169",
 }
 
 
@@ -1371,13 +1363,19 @@ def _trace_route(ip: str, timeout: int = 12) -> str:
 def _asn_route_fallback(ip: str) -> str:
     try:
         req = urllib.request.Request(
-            f"http://ip-api.com/json/{ip}?fields=as,isp",
+            f"http://ip-api.com/json/{ip}?fields=as",
             headers={"User-Agent": "ip-tidy/2.0"},
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception:
         return ""
+    as_raw = data.get("as", "")
+    asns = set(re.findall(r"AS(\d+)", as_raw))
+    for asn, label in _ROUTE_TABLE.items():
+        if asn in asns:
+            return label
+    return ""
     as_raw = data.get("as", "")
     asns = set(re.findall(r"AS(\d+)", as_raw))
     for asn, label in _ROUTE_TABLE.items():
