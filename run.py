@@ -1814,8 +1814,8 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
                                download_url: str = "", host: str = "") -> int:
     step_start = time.time()
 
-    print(c(f"  目标 ASN: {', '.join(f'AS{x}' for x in asns) if asns else '(无)'}", C.GY))
-    print(c(f"  目标 CIDR: {len(v4_cidrs)} 段", C.GY))
+    print(c(f"  [目标] ASN: {', '.join(f'AS{x}' for x in asns) if asns else '(无)'}", C.GY))
+    print(c(f"  [目标] CIDR: {len(v4_cidrs)} 段", C.GY))
 
     if asns:
         all_cidrs = resolve_asn_cidrs(asns, list(v4_cidrs) if v4_cidrs else [])
@@ -1823,18 +1823,24 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
         all_cidrs = list(v4_cidrs)
     all_cidrs = [c for c in all_cidrs if ":" not in c]
     if not all_cidrs:
-        print(c("  无可用 IPv4 CIDR", C.LR))
+        print(c("  [FAIL] 无可用 IPv4 CIDR", C.LR))
         return 0
-    print(f"  展开 CIDR: {len(all_cidrs)} 段")
+    print(c(f"  [OK] 展开 CIDR: {len(all_cidrs)} 段", C.G))
 
+    print_sep()
+
+    print(c("  -- 阶段 1: 子网探活 --", C.CY))
     print("  智能探活: 查找活跃子网...")
     alive_cidrs = smart_subnet_probe(all_cidrs)
     print(f"  活跃子网: {len(alive_cidrs)} 段")
     if not alive_cidrs:
-        print(c("  无活跃子网", C.LR))
+        print(c("  [FAIL] 无活跃子网", C.LR))
         return 0
 
-    print("  采样探活: 从活跃子网每段抽 10 IP...")
+    print_sep()
+
+    print(c("  -- 阶段 2: 采样 TCP 探活 --", C.CY))
+    print("  从活跃子网每段抽 10 IP...")
     all_samples: list[tuple[str, str]] = []
     for cidr in alive_cidrs:
         for ip in sample_ips(cidr, 10):
@@ -1859,12 +1865,15 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
     live_ips = sorted(set(live_ips))
     print(f"  存活 IP: {len(live_ips)} 个")
     if not live_ips:
-        print(c("  未发现存活 IP", C.LR))
+        print(c("  [FAIL] 未发现存活 IP", C.LR))
         return 0
 
+    print_sep()
+
+    print(c("  -- 阶段 3: 路由追踪 --", C.CY))
     trace_ips_raw = live_ips[:100]
     if len(live_ips) > 100:
-        print(f"  路由追踪: {len(live_ips)} IP 中选取前 100 个")
+        print(f"  取前 100 个 ({len(live_ips)} 存活)")
 
     seen: set[str] = set()
     trace_ips: list[str] = []
@@ -1880,9 +1889,12 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
     raw_n = len(trace_ips_raw)
     dedup_n = len(trace_ips)
     if dedup_n < raw_n:
-        print(f"  路由追踪: {raw_n} IP -> {dedup_n} /24 段 (同段去重)")
+        print(f"  同段去重: {raw_n} IP -> {dedup_n} /24 段")
     route_map = _trace_ips_batch(trace_ips)
 
+    print_sep()
+
+    print(c("  -- 阶段 4: 线路筛选 --", C.CY))
     premium_cidrs: set[str] = set()
     optimize_cidrs: set[str] = set()
     for ip, route in route_map.items():
@@ -1913,7 +1925,7 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
     target_cidrs = premium_cidrs or optimize_cidrs
     tier = "精品" if premium_cidrs else "优化"
     if not target_cidrs:
-        print(c("  未发现精品或优化 CIDR，终止", C.LY))
+        print(c("  [FAIL] 未发现精品或优化 CIDR", C.LY))
         return 0
 
     cidr_label_map: dict[str, str] = {}
@@ -1925,15 +1937,17 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
         if ck not in cidr_label_map:
             cidr_label_map[ck] = route
 
+    print_sep()
+
+    print(c("  -- 阶段 5: 端口扫描 --", C.CY))
     ip_file = BASE / "route_target_cidrs.txt"
     total_ips_in_cidrs = 0
     with open(ip_file, "w") as f:
         for cidr in sorted(target_cidrs):
             f.write(cidr + "\n")
             total_ips_in_cidrs += 256
-    print(f"  {tier} CIDR 已写入 {ip_file.name}（{len(target_cidrs)} 段, ~{total_ips_in_cidrs} IP）")
+    print(f"  目标 CIDR: {len(target_cidrs)} 段, ~{total_ips_in_cidrs} IP ({tier}线路)")
 
-    print("  端口扫描中...")
     result_file = BASE / "masscan_result.txt"
     result_file.unlink(missing_ok=True)
     try:
@@ -1943,19 +1957,26 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
         return 0
     print(f"  开放端口记录: {len(all_open)} 条")
     if not all_open:
-        print(c("  无开放端口", C.LR))
+        print(c("  [FAIL] 无开放端口", C.LR))
         return 0
 
-    print("  Cloudflare 检测中...")
+    print_sep()
+
+    print(c("  -- 阶段 6: Cloudflare 检测 --", C.CY))
     hits, passed_count = _pipeline(cfg)
     print(f"  CF 命中: {hits}  验证通过: {passed_count}")
     if not passed_count:
-        print(c("  无通过 CF 验证的 IP", C.LR))
+        print(c("  [FAIL] 无通过 CF 验证的 IP", C.LR))
         return 0
 
-    print("  延迟/带宽测速中...")
+    print_sep()
+
+    print(c("  -- 阶段 7: 延迟/带宽测速 --", C.CY))
     step_speed_test(cfg)
 
+    print_sep()
+
+    print(c("  -- 阶段 8: 结果展示 --", C.CY))
     verified_file = BASE / "verified.txt"
     if verified_file.exists():
         with open(verified_file, encoding="utf-8") as f:
