@@ -1919,11 +1919,11 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
     cidr_label_map: dict[str, str] = {}
     for ip, route in route_map.items():
         try:
-            c = str(ipaddress.IPv4Network(f"{ip}/24", strict=False))
+            ck = str(ipaddress.IPv4Network(f"{ip}/24", strict=False))
         except Exception:
             continue
-        if c not in cidr_label_map:
-            cidr_label_map[c] = route
+        if ck not in cidr_label_map:
+            cidr_label_map[ck] = route
 
     ip_file = BASE / "route_target_cidrs.txt"
     total_ips_in_cidrs = 0
