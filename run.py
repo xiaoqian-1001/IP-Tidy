@@ -1779,7 +1779,7 @@ def _trace_routes_concurrent(
     return _traced
 
 
-def _trace_ips_batch(ips: list[str], concurrency: int = 5) -> dict[str, str]:
+def _trace_ips_batch(ips: list[str], concurrency: int = 10) -> dict[str, str]:
     if not ips:
         return {}
     route_map: dict[str, str] = {}
@@ -1862,9 +1862,25 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
         print(c("  未发现存活 IP", C.LR))
         return 0
 
-    trace_ips = live_ips[:100]
+    trace_ips_raw = live_ips[:100]
     if len(live_ips) > 100:
         print(f"  路由追踪: {len(live_ips)} IP 中选取前 100 个")
+
+    seen: set[str] = set()
+    trace_ips: list[str] = []
+    for ip in trace_ips_raw:
+        try:
+            key = str(ipaddress.IPv4Network(f"{ip}/24", strict=False))
+        except Exception:
+            continue
+        if key not in seen:
+            seen.add(key)
+            trace_ips.append(ip)
+
+    raw_n = len(trace_ips_raw)
+    dedup_n = len(trace_ips)
+    if dedup_n < raw_n:
+        print(f"  路由追踪: {raw_n} IP -> {dedup_n} /24 段 (同段去重)")
     route_map = _trace_ips_batch(trace_ips)
 
     premium_cidrs: set[str] = set()
