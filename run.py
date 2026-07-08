@@ -1262,6 +1262,15 @@ _ROUTE_TABLE = {
     "58807": "精品",
     "4812": "优化",
     "58453": "优化",
+    "4134": "优化",
+    "4837": "优化",
+    "4538": "优化",
+    "38008": "优化",
+    "23724": "优化",
+    "56040": "优化",
+    "56041": "优化",
+    "56046": "优化",
+    "134542": "优化",
 }
 
 
@@ -1309,25 +1318,81 @@ def _ensure_ntrace_binary() -> Path:
             os.unlink(_tmp_path)
 
 
-def _trace_route(ip: str, timeout: int = 10) -> str:
+def _trace_route(ip: str, timeout: int = 12) -> str:
+    nt = None
     try:
         nt = _ensure_ntrace_binary()
     except OSError:
-        return "错误"
-    try:
-        result = subprocess.run(
-            [str(nt), "--table", "--no-color", "-q", "1", "-m", "15", ip],
-            capture_output=True, text=True, timeout=timeout,
-        )
-        output = result.stdout + result.stderr
-    except (subprocess.TimeoutExpired, OSError):
-        return "-"
+        pass
 
-    asns = set(re.findall(r"AS(\d+)", output))
+    asns: set[str] = set()
+    if nt is not None:
+        output = ""
+        for mode in (["-T", "-p", "443"], ["-T", "-p", "80"], []):
+            try:
+                cmd = [str(nt), "--table", "--no-color", "-q", "1", "-m", "15"]
+                cmd.extend(mode)
+                cmd.append(ip)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+                output = result.stdout + result.stderr
+            except (subprocess.TimeoutExpired, OSError):
+                continue
+            asns = set()
+            _asn_lines = [l for l in output.split("\n") if "ASN" in l]
+            if not _asn_lines:
+                asns = set(re.findall(r"AS(\d+)", output))
+            else:
+                for _l in output.split("\n"):
+                    if "->" in _l or "Hop" in _l:
+                        continue
+                    _parts = _l.split()
+                    _asns_in_line = set(re.findall(r"AS(\d+)", _l))
+                    if _asns_in_line:
+                        asns.update(_asns_in_line)
+                    else:
+                        for _p in _parts[1:]:
+                            if _p.isdigit() and 1 <= len(_p) <= 6:
+                                asns.add(_p)
+            if asns:
+                break
+
     for asn, label in _ROUTE_TABLE.items():
         if asn in asns:
             return label
-    return "普通"
+
+    rt = _asn_route_fallback(ip)
+    if rt:
+        return rt
+    if asns:
+        return "普通"
+    return "待检测"
+
+
+def _asn_route_fallback(ip: str) -> str:
+    try:
+        req = urllib.request.Request(
+            f"http://ip-api.com/json/{ip}?fields=as,isp",
+            headers={"User-Agent": "ip-tidy/2.0"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return ""
+    as_raw = data.get("as", "")
+    asns = set(re.findall(r"AS(\d+)", as_raw))
+    for asn, label in _ROUTE_TABLE.items():
+        if asn in asns:
+            return label
+    isp = data.get("isp", "")
+    if isp:
+        _isp_lower = isp.lower()
+        if any(k in _isp_lower for k in ("chinatelecom", "chinanet", "中国电信")):
+            return "优化"
+        if any(k in _isp_lower for k in ("china unicom", "china169", "中国联通")):
+            return "优化"
+        if any(k in _isp_lower for k in ("china mobile", "cmi", "cmcc", "中国移动")):
+            return "优化"
+    return ""
 
 
 def _expand_ips_to_cidrs(entries: list[str], prefix: int = 24) -> list[str]:
@@ -1761,15 +1826,13 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
 
     if display_rows:
         display_rows.sort(key=lambda r: (r[2] == "", float(r[1]) if r[1] else 99999))
-        _dl_ok = sum(1 for v in dl_map.values() if v["ok"] == "true") if dl_map else 0
-        _traced = False
-        if dl_map and _dl_ok == 0:
-            print(c("  [NTR] 带宽测速全失败，跳过路由分析", C.LY))
-        elif do_route_trace:
-            ch = _safe_input("  是否执行路由追踪分析？（Y 确认 | 回车跳过）：", to_lower=True)
-            if ch == "y":
-                display_rows = _trace_routes_concurrent(display_rows)
-                _traced = True
+        dl_ok = sum(1 for v in dl_map.values() if v["ok"] == "true") if dl_map else 0
+        if dl_map and dl_ok == 0:
+            print(c("  [NTR] 带宽测速全失败，线路检测结果仅供参考", C.LY))
+        if do_route_trace:
+            display_rows = _trace_routes_concurrent(display_rows)
+        else:
+            print(c("  [NTR] 线路检测未启用（--no-route），跳过", C.LY))
 
         print_sep("-", C.B)
         print(c(f"  Monte Carlo IP 择优探测结果｜总计获取 {len(display_rows)} 条替换 IP", C.LC))
