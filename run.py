@@ -1762,7 +1762,7 @@ def _trace_routes_concurrent(
     def _trace_one(idx: int, ip: str) -> tuple[int, str]:
         return idx, _trace_route(ip)
 
-    with ThreadPoolExecutor(max_workers=min(5, total)) as _ex:
+    with ThreadPoolExecutor(max_workers=min(10, total)) as _ex:
         _futures: dict[Any, int] = {}
         for _i, _row in enumerate(display_rows):
             _futures[_ex.submit(_trace_one, _i, _row[0])] = _i
@@ -1778,10 +1778,18 @@ def _trace_routes_concurrent(
     _retry_ips = [(i, _row[0]) for i, _row in enumerate(display_rows)
                   if _idx_map.get(i, "") in ("待检测", "")]
     if _retry_ips:
-        for i, ip in _retry_ips:
-            _retry_route = _trace_route(ip, timeout=25)
-            if _retry_route not in ("待检测", ""):
-                _idx_map[i] = _retry_route
+        with ThreadPoolExecutor(max_workers=min(5, len(_retry_ips))) as _ex2:
+            _retry_futs = {}
+            for i, ip in _retry_ips:
+                _retry_futs[_ex2.submit(_trace_route, ip, 25)] = i
+            for _f in as_completed(_retry_futs):
+                _i = _retry_futs[_f]
+                try:
+                    _retry_route = _f.result()
+                    if _retry_route not in ("待检测", ""):
+                        _idx_map[_i] = _retry_route
+                except Exception:
+                    pass
 
     from collections import Counter
 
@@ -2161,14 +2169,21 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
             print(c("         延迟低的 IP 手动测速通常正常，建议以延迟为准筛选", C.LY))
 
     if display_rows:
-        display_rows.sort(key=lambda r: (r[2] == "", float(r[1]) if r[1] else 99999))
         dl_ok = sum(1 for v in dl_map.values() if v["ok"] == "true") if dl_map else 0
         if dl_map and dl_ok == 0:
             print(c("  [NTR] 带宽测速全失败，线路检测结果仅供参考", C.LY))
         if do_route_trace:
             display_rows = _trace_routes_concurrent(display_rows)
+            def _route_sort_key(r):
+                _route = r[5] if len(r) > 5 and r[5] else ""
+                if "精品" in _route: return (0,)
+                if "优化" in _route: return (1,)
+                if not _route: return (3,)
+                return (2,)
+            display_rows.sort(key=lambda r: (_route_sort_key(r), r[2] == "", float(r[1]) if r[1] else 99999))
         else:
             print(c("  [NTR] 线路检测未启用（--no-route），跳过", C.LY))
+            display_rows.sort(key=lambda r: (r[2] == "", float(r[1]) if r[1] else 99999))
 
         print_sep("-", C.B)
         print(c(f"  Monte Carlo IP 择优探测结果｜总计获取 {len(display_rows)} 条替换 IP", C.LC))
