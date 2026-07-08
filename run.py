@@ -1935,7 +1935,7 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
             ck = str(ipaddress.IPv4Network(f"{ip}/24", strict=False))
         except Exception:
             continue
-        if ck not in cidr_label_map:
+        if ck not in cidr_label_map or cidr_label_map[ck] == "待检测":
             cidr_label_map[ck] = route
 
     print_sep()
