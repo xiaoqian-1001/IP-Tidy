@@ -1884,6 +1884,7 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
     route_map = _trace_ips_batch(trace_ips)
 
     premium_cidrs: set[str] = set()
+    optimize_cidrs: set[str] = set()
     for ip, route in route_map.items():
         if "精品" in route:
             try:
@@ -1891,8 +1892,14 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
                 premium_cidrs.add(str(net))
             except Exception:
                 pass
+        elif "优化" in route:
+            try:
+                net = ipaddress.IPv4Network(f"{ip}/24", strict=False)
+                optimize_cidrs.add(str(net))
+            except Exception:
+                pass
 
-    print(f"  精品 CIDR: {len(premium_cidrs)} 个 /24 段")
+    print(f"  精品 CIDR: {len(premium_cidrs)} 个 /24 | 优化 CIDR: {len(optimize_cidrs)} 个 /24")
     route_stats: dict[str, int] = {}
     for r in route_map.values():
         route_stats[r] = route_stats.get(r, 0) + 1
@@ -1903,17 +1910,28 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
             print(c(f"{label}({cnt})", color), end="  ")
         print()
 
-    if not premium_cidrs:
-        print(c("  未发现精品 CIDR，终止", C.LY))
+    target_cidrs = premium_cidrs or optimize_cidrs
+    tier = "精品" if premium_cidrs else "优化"
+    if not target_cidrs:
+        print(c("  未发现精品或优化 CIDR，终止", C.LY))
         return 0
 
-    ip_file = BASE / "route_premium_ips.txt"
+    cidr_label_map: dict[str, str] = {}
+    for ip, route in route_map.items():
+        try:
+            c = str(ipaddress.IPv4Network(f"{ip}/24", strict=False))
+        except Exception:
+            continue
+        if c not in cidr_label_map:
+            cidr_label_map[c] = route
+
+    ip_file = BASE / "route_target_cidrs.txt"
     total_ips_in_cidrs = 0
     with open(ip_file, "w") as f:
-        for cidr in sorted(premium_cidrs):
+        for cidr in sorted(target_cidrs):
             f.write(cidr + "\n")
             total_ips_in_cidrs += 256
-    print(f"  精品 CIDR 已写入 {ip_file.name}（{len(premium_cidrs)} 段, ~{total_ips_in_cidrs} IP）")
+    print(f"  {tier} CIDR 已写入 {ip_file.name}（{len(target_cidrs)} 段, ~{total_ips_in_cidrs} IP）")
 
     print("  端口扫描中...")
     result_file = BASE / "masscan_result.txt"
@@ -1959,7 +1977,13 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
                 ip = parts[0]
                 latency = parts[10] if len(parts) > 10 else "-"
                 colo_code = parts[8] if len(parts) > 8 else "-"
-                route_label = route_map.get(ip, "待检测")
+                route_label = route_map.get(ip)
+                if not route_label:
+                    try:
+                        c_net = str(ipaddress.IPv4Network(f"{ip}/24", strict=False))
+                        route_label = cidr_label_map.get(c_net, "待检测")
+                    except Exception:
+                        route_label = "待检测"
                 _r_color = C.LG if "精品" in route_label else (C.LY if "优化" in route_label else C.W)
                 prefix = ""
                 try:
