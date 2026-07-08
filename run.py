@@ -1371,6 +1371,9 @@ def _trace_route(ip: str, timeout: int = 18) -> str:
                             if _p.isdigit() and 1 <= len(_p) <= 6:
                                 mode_asns.add(_p)
             asns.update(mode_asns)
+            for _asn, _label in _ROUTE_TABLE.items():
+                if _asn in asns:
+                    return _label
 
     for asn, label in _ROUTE_TABLE.items():
         if asn in asns:
