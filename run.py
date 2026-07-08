@@ -12,6 +12,7 @@ import ipaddress
 import argparse
 import subprocess
 import unicodedata
+import random
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass
@@ -36,6 +37,7 @@ from lib.scanner_utils import (
     read_masscan_stderr, parse_masscan_xml,
     read_default_ports, parse_targets, expand_cidrs, port_count,
     split_port_batches, adjust_concurrency, random_ports, random_probe_ports,
+    quick_probe, sample_ips,
     WIDE_PORTS, cidr_count,
     CF_SCANNER, VERIFY_PY, API_URL, MASSCAN_BATCH, CSV_HEADER,
     load_incremental_state, save_incremental_state, compute_cidr_diff, _incr_tag, INCR_DIR,
@@ -589,11 +591,18 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
     do_deep = a.deep
     do_mcis = a.mcis
     if not do_speed and not do_deep and not do_mcis:
-        ch = _safe_input("  是否执行 MCIS 快捷搜索？（跳过扫描流程，直接搜索 IP | Y 确认 | 回车跳过）：", to_lower=True)
-        if ch == "y":
+        ch = _safe_input("  快捷功能（1.MCIS快捷搜索 | 2.IP路由追踪 | 回车跳过）：", to_lower=True)
+        if ch == "1":
             a.mcis_only = True
             do_mcis = True
             print(c("  [已启用] Monte Carlo IP 搜索探测", C.G))
+            return do_speed, do_deep, do_mcis
+        if ch == "2":
+            a.route_trace_only = True
+            do_speed = False
+            do_deep = False
+            do_mcis = False
+            print(c("  [已启用] IP 路由追踪探测", C.G))
             return do_speed, do_deep, do_mcis
     if not do_speed:
         ts = _safe_input("  是否启用全量测速？（Y 确认 | 回车跳过）：", to_lower=True)
@@ -640,6 +649,12 @@ def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
     if a.mcis_only:
         step_num += 1
         steps.append((f"Step {step_num}  Monte Carlo IP 搜索探测", lambda: step_montecarlo(cfg, auto_mcis=True, colo=a.colo, colo_exclude=a.colo_exclude, do_route_trace=not a.no_route, download_url=a.mcis_url, host=a.mcis_host)))
+        total = len(steps)
+        steps = [(f"{lbl.replace('Step ', f'Step {i+1}/{total}  ')}", fn) for i, (lbl, fn) in enumerate(steps)]
+        return steps
+    if a.route_trace_only:
+        step_num += 1
+        steps.append((f"Step {step_num}  IP 路由追踪探测", lambda: step_route_trace_discovery(cfg, asns, v4_cidrs, colo=a.colo, colo_exclude=a.colo_exclude, download_url=a.mcis_url, host=a.mcis_host)))
         total = len(steps)
         steps = [(f"{lbl.replace('Step ', f'Step {i+1}/{total}  ')}", fn) for i, (lbl, fn) in enumerate(steps)]
         return steps
@@ -1762,6 +1777,192 @@ def _trace_routes_concurrent(
             if _retry_route not in ("待检测", ""):
                 _idx_map[i] = _retry_route
     return _traced
+
+
+def _trace_ips_batch(ips: list[str], concurrency: int = 5) -> dict[str, str]:
+    if not ips:
+        return {}
+    route_map: dict[str, str] = {}
+    total = len(ips)
+    workers = min(concurrency, total)
+    with ThreadPoolExecutor(max_workers=workers) as _ex:
+        _futures = {}
+        for ip in ips:
+            _futures[_ex.submit(_trace_route, ip)] = ip
+        _done = 0
+        for _f in as_completed(_futures):
+            ip = _futures[_f]
+            _done += 1
+            try:
+                route_map[ip] = _f.result()
+            except Exception:
+                route_map[ip] = "待检测"
+            write_progress(_done / total * 100, f" | 路由追踪 ({_done}/{total})")
+    write_progress_done(" | 路由追踪完成")
+    retry_ips = [ip for ip, r in route_map.items() if r in ("待检测", "")]
+    if retry_ips:
+        for ip in retry_ips:
+            retry = _trace_route(ip, timeout=25)
+            if retry not in ("待检测", ""):
+                route_map[ip] = retry
+    return route_map
+
+
+def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
+                               v4_cidrs: list[str],
+                               colo: str = "", colo_exclude: str = "",
+                               download_url: str = "", host: str = "") -> int:
+    step_start = time.time()
+
+    print(c(f"  目标 ASN: {', '.join(f'AS{x}' for x in asns) if asns else '(无)'}", C.GY))
+    print(c(f"  目标 CIDR: {len(v4_cidrs)} 段", C.GY))
+
+    # Step 1: Resolve ASNs to CIDRs if needed
+    if asns:
+        all_cidrs = resolve_asn_cidrs(asns, list(v4_cidrs) if v4_cidrs else [])
+    else:
+        all_cidrs = list(v4_cidrs)
+    all_cidrs = [c for c in all_cidrs if ":" not in c]
+    if not all_cidrs:
+        print(c("  无可用 IPv4 CIDR", C.LR))
+        return 0
+    print(f"  展开 CIDR: {len(all_cidrs)} 段")
+
+    # Step 2: Smart subnet probe
+    print("  智能探活: 查找活跃子网...")
+    alive_cidrs = smart_subnet_probe(all_cidrs)
+    print(f"  活跃子网: {len(alive_cidrs)} 段")
+    if not alive_cidrs:
+        print(c("  无活跃子网", C.LR))
+        return 0
+
+    # Step 3: Sample IPs and TCP probe
+    print("  采样探活: 从活跃子网抽取IP...")
+    live_ips: set[str] = set()
+    for cidr in alive_cidrs:
+        samples = sample_ips(cidr, 3)
+        for ip in samples:
+            if quick_probe(ip, 443, 3):
+                live_ips.add(ip)
+    live_ips_list = sorted(live_ips)
+    print(f"  存活 IP: {len(live_ips_list)} 个")
+    if not live_ips_list:
+        print(c("  未发现存活 IP", C.LR))
+        return 0
+
+    # Step 4: Route trace
+    route_map = _trace_ips_batch(live_ips_list)
+
+    # Step 5: Filter for premium
+    premium_ips = [(ip, r) for ip, r in route_map.items() if "精品" in r]
+    print(f"  精品线路 IP: {len(premium_ips)} 个")
+
+    # Print route summary
+    route_stats: dict[str, int] = {}
+    for r in route_map.values():
+        route_stats[r] = route_stats.get(r, 0) + 1
+    if route_stats:
+        print("  线路分布:  ", end="")
+        items = sorted(route_stats.items(), key=lambda x: -x[1])
+        for label, cnt in items[:6]:
+            color = C.LG if "精品" in label else (C.LY if "优化" in label else C.W)
+            print(c(f"{label}({cnt})", color), end="  ")
+        print()
+
+    if not premium_ips:
+        print(c("  未发现精品线路 IP，终止", C.LY))
+        return 0
+
+    # Step 6: Write premium IPs for masscan
+    ip_file = BASE / "route_premium_ips.txt"
+    with open(ip_file, "w") as f:
+        for ip, _ in premium_ips:
+            f.write(ip + "\n")
+    print(f"  精品 IP 已写入 {ip_file.name}")
+
+    # Step 7: Masscan
+    print("  端口扫描中...")
+    result_file = BASE / "masscan_result.txt"
+    result_file.unlink(missing_ok=True)
+    try:
+        all_open = _run_masscan_batches(ip_file, cfg.scan_ports, cfg.masscan_rate,
+                                        "masscan_result", result_file)
+    except subprocess.CalledProcessError:
+        return 0
+    print(f"  开放端口记录: {len(all_open)} 条")
+    if not all_open:
+        print(c("  无开放端口", C.LR))
+        return 0
+
+    # Step 8: CF pipeline
+    print("  Cloudflare 检测中...")
+    hits, passed_count = _pipeline(cfg)
+    print(f"  CF 命中: {hits}  验证通过: {passed_count}")
+    if not passed_count:
+        print(c("  无通过 CF 验证的 IP", C.LR))
+        return 0
+
+    # Step 9: Speed test
+    print("  延迟/带宽测速中...")
+    step_speed_test(cfg)
+
+    # Step 10: Display results with route info
+    verified_file = BASE / "verified.txt"
+    if verified_file.exists():
+        with open(verified_file, encoding="utf-8") as f:
+            lines = f.readlines()
+        if len(lines) > 1:
+            print()
+            print_step("IP 路由追踪结果")
+            header = c("  " + _pad_cjk("IP 地址", 18, '<') + "  "
+                       + _pad_cjk("延迟(ms)", 8, '<') + "  "
+                       + _pad_cjk("速度(MB/s)", 14, '<') + "  "
+                       + _pad_cjk("地区码", 8, '<') + "  "
+                       + _pad_cjk("所属网段", 16, '<') + "  "
+                       + _pad_cjk("线路", 24, '<'), C.CY)
+            print(header)
+            for line in lines[1:]:
+                parts = line.strip().split(",")
+                if len(parts) < 12:
+                    continue
+                ip = parts[0]
+                port = parts[1]
+                latency = parts[10] if len(parts) > 10 else "-"
+                speed = parts[11] if len(parts) > 11 and parts[11].strip() else "-"
+                colo_code = parts[8] if len(parts) > 8 else "-"
+                route_label = route_map.get(ip, "待检测")
+                _r_color = C.LG if "精品" in route_label else (C.LY if "优化" in route_label else C.W)
+                _color = C.W
+                prefix = ""
+                try:
+                    n = ipaddress.IPv4Network(f"{ip}/24", strict=False)
+                    prefix = str(n)
+                except Exception:
+                    pass
+                _speed_str = parts[10] if len(parts) > 10 else "-"
+                try:
+                    _speed_val = float(parts[10])
+                except (ValueError, IndexError):
+                    _speed_val = None
+                _spd = f"{_speed_val:.2f}" if _speed_val is not None else "-"
+                _line = ("  " + _pad_cjk(ip, 18, '<') + "  " + _pad_cjk(latency, 8, '<')
+                         + "  " + _pad_cjk(_spd, 14, '<') + "  " + _pad_cjk(colo_code.upper(), 8, '<')
+                         + "  " + _pad_cjk(prefix, 16, '<') + "  "
+                         + c(_pad_cjk(route_label, 24, '<'), _r_color))
+                print(c(_line, _color))
+
+    # Cleanup
+    ip_file.unlink(missing_ok=True)
+
+    elapsed = int(time.time() - step_start)
+    m, s = divmod(elapsed, 60)
+    if m:
+        print(c(f"  [路由追踪] 完成, 本步耗时: {m}分{s}秒", C.GY))
+    else:
+        print(c(f"  [路由追踪] 完成, 本步耗时: {elapsed}秒", C.GY))
+    return passed_count
+
+
 def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "", colo_exclude: str = "", do_route_trace: bool = True,
                     download_url: str = "", host: str = "") -> int:
     step_start = time.time()
@@ -1956,6 +2157,7 @@ def main() -> None:
     a = parser.parse_args()
     a = parser.parse_args()
     a.mcis_only = False
+    a.route_trace_only = False
     if a.targets and a.targets[0].lower() == "mcis":
         a.mcis_only = True
         a.mcis = True
@@ -1996,9 +2198,12 @@ def main() -> None:
         cfg.masscan_rate = max(100, a.rate)
         print(f"  发包速率: {cfg.masscan_rate} pps (手动)")
 
-    if not a.mcis_only:
+    if not a.mcis_only and not a.route_trace_only:
         _resolve_port_mode(a, cfg, sys.argv[1:])
         do_speed, do_deep, do_mcis = _interactive_choices(a, v4_cidrs, asns)
+    elif a.route_trace_only:
+        do_speed, do_deep, do_mcis = False, False, False
+        print(c("  [路由追踪] 精品线路探测: 追踪 → CF检测 → 测速", C.CY))
     else:
         do_speed, do_deep, do_mcis = False, False, True
         print(c("  [MCIS] 快速模式: 跳过扫描，直接执行蒙特卡洛搜索", C.CY))
@@ -2062,6 +2267,10 @@ def main() -> None:
                 added = result
                 if added > 0:
                     passed_count += added
+            elif "IP路由追踪" in label:
+                added = result
+                if added > 0:
+                    passed_count = added
         except KeyboardInterrupt:
             print(c("\n  [中断] 用户取消", C.LR))
             sys.exit(SIGINT_EXIT_CODE)
