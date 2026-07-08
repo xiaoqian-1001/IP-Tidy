@@ -1839,12 +1839,12 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
             cur, total = data["current"], data["total"]
             _probe_total = total
             write_progress(cur / total * 100, f" | 探活 ({cur}/{total})")
+            if cur == total:
+                write_progress_done("")
         elif typ == "log":
+            write_progress_done("")
             print(c(f"  {data}", C.GY))
     alive_cidrs = smart_subnet_probe(all_cidrs, progress_callback=_probe_cb)
-    if _probe_total:
-        write_progress_done(" | 探活完成")
-    print(f"  活跃子网: {len(alive_cidrs)} 段")
     if not alive_cidrs:
         print(c("  [FAIL] 无活跃子网", C.LR))
         return 0
