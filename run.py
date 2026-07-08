@@ -1832,7 +1832,18 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
 
     print(c("  -- 阶段 1: 子网探活 --", C.CY))
     print("  智能探活: 查找活跃子网...")
-    alive_cidrs = smart_subnet_probe(all_cidrs)
+    _probe_total = 0
+    def _probe_cb(typ, data):
+        nonlocal _probe_total
+        if typ == "scan_progress":
+            cur, total = data["current"], data["total"]
+            _probe_total = total
+            write_progress(cur / total * 100, f" | 探活 ({cur}/{total})")
+        elif typ == "log":
+            print(c(f"  {data}", C.GY))
+    alive_cidrs = smart_subnet_probe(all_cidrs, progress_callback=_probe_cb)
+    if _probe_total:
+        write_progress_done(" | 探活完成")
     print(f"  活跃子网: {len(alive_cidrs)} 段")
     if not alive_cidrs:
         print(c("  [FAIL] 无活跃子网", C.LR))
