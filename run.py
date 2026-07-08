@@ -1257,12 +1257,12 @@ NTRACE_DIR = MCIS_DIR
 NTRACE_BIN = NTRACE_DIR / "nexttrace"
 
 _ROUTE_TABLE = {
-    "58807": "CMIN2",
-    "4809": "CN2",
-    "9929": "CUII",
-    "58453": "CMI",
-    "4134": "163",
-    "4837": "169",
+    "58807": "中国移动 / CMIN2",
+    "4809": "中国电信 / CN2",
+    "9929": "中国联通 / CUII",
+    "58453": "中国移动 / CMI",
+    "4134": "中国电信 / 163",
+    "4837": "中国联通 / 169",
 }
 
 
@@ -1836,7 +1836,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
         print(c(f"  Monte Carlo IP 择优探测结果｜总计获取 {len(display_rows)} 条替换 IP", C.LC))
         _mcis_hdr = ("  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 8, '<') +
                      "  " + _pad_cjk("速度(MB/s)", 14, '<') + "  " + _pad_cjk("地区码", 8, '<') +
-                     "  " + _pad_cjk("所属网段", 16, '<') + "  " + _pad_cjk("线路", 6, '<'))
+                     "  " + _pad_cjk("所属网段", 16, '<') + "  " + _pad_cjk("线路", 18, '<'))
         print(c(_mcis_hdr, C.W))
         for _i, _row in enumerate(display_rows):
             _ip, _lat, _spd, _prefix, _colo, _route = _row
@@ -1856,7 +1856,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
             _line = ("  " + _pad_cjk(_ip, 18, '<') + "  " + _pad_cjk(_lat, 8, '<') +
                      "  " + _pad_cjk(_spd or "-", 14, '<') + "  " + _pad_cjk(_colo.upper(), 8, '<') +
                      "  " + _pad_cjk(_prefix, 16, '<') + "  " +
-                     c(_pad_cjk(_route_display, 6, '<'), _r_color))
+                     c(_pad_cjk(_route_display, 18, '<'), _r_color))
             print(c(_line, _color))
 
         _top_prefixes = list(dict.fromkeys(p for _, _, _, p, _, _ in display_rows[:5] if p))
