@@ -1387,7 +1387,7 @@ def _trace_route(ip: str, timeout: int = 18) -> str:
 def _asn_route_fallback(ip: str) -> str:
     try:
         req = urllib.request.Request(
-            f"http://ip-api.com/json/{ip}?fields=as",
+            f"http://ip-api.com/json/{ip}?fields=as,isp",
             headers={"User-Agent": "ip-tidy/2.0"},
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -1399,21 +1399,15 @@ def _asn_route_fallback(ip: str) -> str:
     for asn, label in _ROUTE_TABLE.items():
         if asn in asns:
             return label
-    return ""
-    as_raw = data.get("as", "")
-    asns = set(re.findall(r"AS(\d+)", as_raw))
-    for asn, label in _ROUTE_TABLE.items():
-        if asn in asns:
-            return label
     isp = data.get("isp", "")
     if isp:
         _isp_lower = isp.lower()
         if any(k in _isp_lower for k in ("chinatelecom", "chinanet", "中国电信")):
-            return "优化"
+            return "中国电信｜163｜优化"
         if any(k in _isp_lower for k in ("china unicom", "china169", "中国联通")):
-            return "优化"
+            return "中国联通｜CNC｜优化"
         if any(k in _isp_lower for k in ("china mobile", "cmi", "cmcc", "中国移动")):
-            return "优化"
+            return "中国移动｜CMI｜优化"
     return ""
 
 
@@ -1764,11 +1758,8 @@ def _trace_routes_concurrent(
             _done += 1
             write_progress(_done / total * 100, f" | 路由追踪 ({_done}/{total})")
 
-    _traced: list[tuple[str, str, str, str, str, str]] = []
-    for _i, _row in enumerate(display_rows):
-        _traced.append((_row[0], _row[1], _row[2], _row[3], _row[4], _idx_map.get(_i, "")))
-
     write_progress_done(" | 路由追踪完成")
+
     _retry_ips = [(i, _row[0]) for i, _row in enumerate(display_rows)
                   if _idx_map.get(i, "") in ("待检测", "")]
     if _retry_ips:
@@ -1776,6 +1767,11 @@ def _trace_routes_concurrent(
             _retry_route = _trace_route(ip, timeout=25)
             if _retry_route not in ("待检测", ""):
                 _idx_map[i] = _retry_route
+
+    _traced: list[tuple[str, str, str, str, str, str]] = []
+    for _i, _row in enumerate(display_rows):
+        _traced.append((_row[0], _row[1], _row[2], _row[3], _row[4], _idx_map.get(_i, "")))
+
     return _traced
 
 
@@ -1940,14 +1936,21 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
         print(c("  [FAIL] 未发现精品或优化 CIDR", C.LY))
         return 0
 
-    cidr_label_map: dict[str, str] = {}
+    from collections import Counter
+
+    cidr_counts: dict[str, Counter] = {}
     for ip, route in route_map.items():
+        if route in ("待检测", ""):
+            continue
         try:
             ck = str(ipaddress.IPv4Network(f"{ip}/24", strict=False))
         except Exception:
             continue
-        if ck not in cidr_label_map or cidr_label_map[ck] == "待检测":
-            cidr_label_map[ck] = route
+        cidr_counts.setdefault(ck, Counter())[route] += 1
+
+    cidr_label_map: dict[str, str] = {}
+    for ck, cnt in cidr_counts.items():
+        cidr_label_map[ck] = cnt.most_common(1)[0][0]
 
     print_sep()
 
