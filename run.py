@@ -1289,6 +1289,8 @@ _ROUTE_TABLE = {
     "4538": "教育网｜优化",
 }
 
+_asn_cache: dict[str, str] = {}
+
 
 def _ensure_ntrace_binary() -> Path:
     if NTRACE_BIN.exists() and os.access(str(NTRACE_BIN), os.X_OK):
@@ -1345,7 +1347,7 @@ def _trace_route(ip: str, timeout: int = 18) -> str:
     if nt is not None:
         for mode in (["-T", "-p", "443"], ["-T", "-p", "80"], []):
             try:
-                cmd = [str(nt), "--table", "--no-color", "-q", "1", "-m", "15"]
+                cmd = [str(nt), "--table", "--no-color", "-q", "1", "-m", "25"]
                 cmd.extend(mode)
                 cmd.append(ip)
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -1384,6 +1386,12 @@ def _trace_route(ip: str, timeout: int = 18) -> str:
 
 def _asn_route_fallback(ip: str) -> str:
     try:
+        ck = str(ipaddress.IPv4Network(f"{ip}/24", strict=False))
+    except Exception:
+        ck = ""
+    if ck and ck in _asn_cache:
+        return _asn_cache[ck]
+    try:
         req = urllib.request.Request(
             f"http://ip-api.com/json/{ip}?fields=as,isp",
             headers={"User-Agent": "ip-tidy/2.0"},
@@ -1396,16 +1404,25 @@ def _asn_route_fallback(ip: str) -> str:
     asns = set(re.findall(r"AS(\d+)", as_raw))
     for asn, label in _ROUTE_TABLE.items():
         if asn in asns:
+            if ck:
+                _asn_cache[ck] = label
             return label
     isp = data.get("isp", "")
     if isp:
         _isp_lower = isp.lower()
         if any(k in _isp_lower for k in ("chinatelecom", "chinanet", "中国电信")):
-            return "中国电信｜163｜优化"
-        if any(k in _isp_lower for k in ("china unicom", "china169", "中国联通")):
-            return "中国联通｜CNC｜优化"
-        if any(k in _isp_lower for k in ("china mobile", "cmi", "cmcc", "中国移动")):
-            return "中国移动｜CMI｜优化"
+            _r = "中国电信｜163｜优化"
+        elif any(k in _isp_lower for k in ("china unicom", "china169", "中国联通")):
+            _r = "中国联通｜CNC｜优化"
+        elif any(k in _isp_lower for k in ("china mobile", "cmi", "cmcc", "中国移动")):
+            _r = "中国移动｜CMI｜优化"
+        else:
+            _r = ""
+        if _r and ck:
+            _asn_cache[ck] = _r
+        return _r
+    if ck:
+        _asn_cache[ck] = ""
     return ""
 
 
@@ -1766,9 +1783,32 @@ def _trace_routes_concurrent(
             if _retry_route not in ("待检测", ""):
                 _idx_map[i] = _retry_route
 
+    from collections import Counter
+
+    _cidr_routes: dict[str, Counter] = {}
+    for _i, _row in enumerate(display_rows):
+        _route = _idx_map.get(_i, "")
+        if _route in ("待检测", ""):
+            continue
+        try:
+            _ck = str(ipaddress.IPv4Network(f"{_row[0]}/24", strict=False))
+        except Exception:
+            continue
+        _cidr_routes.setdefault(_ck, Counter())[_route] += 1
+    _cidr_fallback: dict[str, str] = {}
+    for _ck, _cnt in _cidr_routes.items():
+        _cidr_fallback[_ck] = _cnt.most_common(1)[0][0]
+
     _traced: list[tuple[str, str, str, str, str, str]] = []
     for _i, _row in enumerate(display_rows):
-        _traced.append((_row[0], _row[1], _row[2], _row[3], _row[4], _idx_map.get(_i, "")))
+        _route = _idx_map.get(_i, "")
+        if _route in ("待检测", ""):
+            try:
+                _ck = str(ipaddress.IPv4Network(f"{_row[0]}/24", strict=False))
+                _route = _cidr_fallback.get(_ck, "")
+            except Exception:
+                _route = ""
+        _traced.append((_row[0], _row[1], _row[2], _row[3], _row[4], _route))
 
     return _traced
 
