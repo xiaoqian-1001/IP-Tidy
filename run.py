@@ -1319,7 +1319,7 @@ def _ensure_ntrace_binary() -> Path:
             os.unlink(_tmp_path)
 
 
-def _trace_route(ip: str, timeout: int = 12) -> str:
+def _trace_route(ip: str, timeout: int = 18) -> str:
     nt = None
     try:
         nt = _ensure_ntrace_binary()
@@ -1738,7 +1738,7 @@ def _trace_routes_concurrent(
     def _trace_one(idx: int, ip: str) -> tuple[int, str]:
         return idx, _trace_route(ip)
 
-    with ThreadPoolExecutor(max_workers=min(20, total)) as _ex:
+    with ThreadPoolExecutor(max_workers=min(5, total)) as _ex:
         _futures: dict[Any, int] = {}
         for _i, _row in enumerate(display_rows):
             _futures[_ex.submit(_trace_one, _i, _row[0])] = _i
@@ -1754,6 +1754,13 @@ def _trace_routes_concurrent(
         _traced.append((_row[0], _row[1], _row[2], _row[3], _row[4], _idx_map.get(_i, "")))
 
     write_progress_done(" | 路由追踪完成")
+    _retry_ips = [(i, _row[0]) for i, _row in enumerate(display_rows)
+                  if _idx_map.get(i, "") in ("待检测", "")]
+    if _retry_ips:
+        for i, ip in _retry_ips:
+            _retry_route = _trace_route(ip, timeout=25)
+            if _retry_route not in ("待检测", ""):
+                _idx_map[i] = _retry_route
     return _traced
 def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "", colo_exclude: str = "", do_route_trace: bool = True,
                     download_url: str = "", host: str = "") -> int:
