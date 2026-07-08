@@ -1817,7 +1817,6 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
     print(c(f"  目标 ASN: {', '.join(f'AS{x}' for x in asns) if asns else '(无)'}", C.GY))
     print(c(f"  目标 CIDR: {len(v4_cidrs)} 段", C.GY))
 
-    # Step 1: Resolve ASNs to CIDRs if needed
     if asns:
         all_cidrs = resolve_asn_cidrs(asns, list(v4_cidrs) if v4_cidrs else [])
     else:
@@ -1828,7 +1827,6 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
         return 0
     print(f"  展开 CIDR: {len(all_cidrs)} 段")
 
-    # Step 2: Smart subnet probe
     print("  智能探活: 查找活跃子网...")
     alive_cidrs = smart_subnet_probe(all_cidrs)
     print(f"  活跃子网: {len(alive_cidrs)} 段")
@@ -1836,51 +1834,71 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
         print(c("  无活跃子网", C.LR))
         return 0
 
-    # Step 3: Sample IPs and TCP probe
-    print("  采样探活: 从活跃子网抽取IP...")
-    live_ips: set[str] = set()
+    print("  采样探活: 从活跃子网每段抽 10 IP...")
+    all_samples: list[tuple[str, str]] = []
     for cidr in alive_cidrs:
-        samples = sample_ips(cidr, 3)
-        for ip in samples:
-            if quick_probe(ip, 443, 3):
-                live_ips.add(ip)
-    live_ips_list = sorted(live_ips)
-    print(f"  存活 IP: {len(live_ips_list)} 个")
-    if not live_ips_list:
+        for ip in sample_ips(cidr, 10):
+            all_samples.append((cidr, ip))
+
+    live_ips: list[str] = []
+    workers = min(200, len(all_samples))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        fmap = {ex.submit(quick_probe, ip, 443, 3): ip for _, ip in all_samples}
+        done, total = 0, len(fmap)
+        for f in as_completed(fmap):
+            ip = fmap[f]; done += 1
+            try:
+                if f.result():
+                    live_ips.append(ip)
+            except Exception:
+                pass
+            if done % 200 == 0 or done == total:
+                write_progress(done / total * 100, f" | TCP 探活 ({done}/{total})")
+    write_progress_done(" | TCP 探活完成")
+
+    live_ips = sorted(set(live_ips))
+    print(f"  存活 IP: {len(live_ips)} 个")
+    if not live_ips:
         print(c("  未发现存活 IP", C.LR))
         return 0
 
-    # Step 4: Route trace
-    route_map = _trace_ips_batch(live_ips_list)
+    trace_ips = live_ips[:100]
+    if len(live_ips) > 100:
+        print(f"  路由追踪: {len(live_ips)} IP 中选取前 100 个")
+    route_map = _trace_ips_batch(trace_ips)
 
-    # Step 5: Filter for premium
-    premium_ips = [(ip, r) for ip, r in route_map.items() if "精品" in r]
-    print(f"  精品线路 IP: {len(premium_ips)} 个")
+    premium_cidrs: set[str] = set()
+    for ip, route in route_map.items():
+        if "精品" in route:
+            try:
+                net = ipaddress.IPv4Network(f"{ip}/24", strict=False)
+                premium_cidrs.add(str(net))
+            except Exception:
+                pass
 
-    # Print route summary
+    print(f"  精品 CIDR: {len(premium_cidrs)} 个 /24 段")
     route_stats: dict[str, int] = {}
     for r in route_map.values():
         route_stats[r] = route_stats.get(r, 0) + 1
     if route_stats:
         print("  线路分布:  ", end="")
-        items = sorted(route_stats.items(), key=lambda x: -x[1])
-        for label, cnt in items[:6]:
+        for label, cnt in sorted(route_stats.items(), key=lambda x: -x[1])[:6]:
             color = C.LG if "精品" in label else (C.LY if "优化" in label else C.W)
             print(c(f"{label}({cnt})", color), end="  ")
         print()
 
-    if not premium_ips:
-        print(c("  未发现精品线路 IP，终止", C.LY))
+    if not premium_cidrs:
+        print(c("  未发现精品 CIDR，终止", C.LY))
         return 0
 
-    # Step 6: Write premium IPs for masscan
     ip_file = BASE / "route_premium_ips.txt"
+    total_ips_in_cidrs = 0
     with open(ip_file, "w") as f:
-        for ip, _ in premium_ips:
-            f.write(ip + "\n")
-    print(f"  精品 IP 已写入 {ip_file.name}")
+        for cidr in sorted(premium_cidrs):
+            f.write(cidr + "\n")
+            total_ips_in_cidrs += 256
+    print(f"  精品 CIDR 已写入 {ip_file.name}（{len(premium_cidrs)} 段, ~{total_ips_in_cidrs} IP）")
 
-    # Step 7: Masscan
     print("  端口扫描中...")
     result_file = BASE / "masscan_result.txt"
     result_file.unlink(missing_ok=True)
@@ -1894,7 +1912,6 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
         print(c("  无开放端口", C.LR))
         return 0
 
-    # Step 8: CF pipeline
     print("  Cloudflare 检测中...")
     hits, passed_count = _pipeline(cfg)
     print(f"  CF 命中: {hits}  验证通过: {passed_count}")
@@ -1902,11 +1919,9 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
         print(c("  无通过 CF 验证的 IP", C.LR))
         return 0
 
-    # Step 9: Speed test
     print("  延迟/带宽测速中...")
     step_speed_test(cfg)
 
-    # Step 10: Display results with route info
     verified_file = BASE / "verified.txt"
     if verified_file.exists():
         with open(verified_file, encoding="utf-8") as f:
@@ -1926,22 +1941,18 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
                 if len(parts) < 12:
                     continue
                 ip = parts[0]
-                port = parts[1]
                 latency = parts[10] if len(parts) > 10 else "-"
-                speed = parts[11] if len(parts) > 11 and parts[11].strip() else "-"
                 colo_code = parts[8] if len(parts) > 8 else "-"
                 route_label = route_map.get(ip, "待检测")
                 _r_color = C.LG if "精品" in route_label else (C.LY if "优化" in route_label else C.W)
-                _color = C.W
                 prefix = ""
                 try:
                     n = ipaddress.IPv4Network(f"{ip}/24", strict=False)
                     prefix = str(n)
                 except Exception:
                     pass
-                _speed_str = parts[10] if len(parts) > 10 else "-"
                 try:
-                    _speed_val = float(parts[10])
+                    _speed_val = float(parts[11]) if len(parts) > 11 and parts[11].strip() else None
                 except (ValueError, IndexError):
                     _speed_val = None
                 _spd = f"{_speed_val:.2f}" if _speed_val is not None else "-"
@@ -1949,17 +1960,13 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
                          + "  " + _pad_cjk(_spd, 14, '<') + "  " + _pad_cjk(colo_code.upper(), 8, '<')
                          + "  " + _pad_cjk(prefix, 16, '<') + "  "
                          + c(_pad_cjk(route_label, 24, '<'), _r_color))
-                print(c(_line, _color))
+                print(c(_line, C.W))
 
-    # Cleanup
     ip_file.unlink(missing_ok=True)
 
     elapsed = int(time.time() - step_start)
     m, s = divmod(elapsed, 60)
-    if m:
-        print(c(f"  [路由追踪] 完成, 本步耗时: {m}分{s}秒", C.GY))
-    else:
-        print(c(f"  [路由追踪] 完成, 本步耗时: {elapsed}秒", C.GY))
+    print(c(f"  [路由追踪] 完成, 本步耗时: {m}分{s}秒" if m else f"  [路由追踪] 完成, 本步耗时: {elapsed}秒", C.GY))
     return passed_count
 
 
