@@ -1257,21 +1257,21 @@ NTRACE_DIR = MCIS_DIR
 NTRACE_BIN = NTRACE_DIR / "nexttrace"
 
 _ROUTE_TABLE = {
-    "58807": "中国移动 / CMIN2",
-    "4809": "中国电信 / CN2",
-    "9929": "中国联通 / CUII",
-    "58453": "中国移动 / CMI",
-    "9808": "中国移动 / CMI",
-    "56040": "中国移动 / CMI",
-    "56041": "中国移动 / CMI",
-    "38008": "中国移动 / CMHK",
-    "4134": "中国电信 / 163",
-    "4812": "中国电信 / 163",
-    "4811": "中国电信 / 163",
-    "4837": "中国联通 / 169",
-    "17621": "中国联通 / 169",
-    "23724": "中国联通 / 169",
-    "4538": "教育网",
+    "58807": "中国移动 / CMIN2｜精品",
+    "4809": "中国电信 / CN2｜精品",
+    "9929": "中国联通 / CUII｜精品",
+    "58453": "中国移动 / CMI｜优化",
+    "9808": "中国移动 / CMI｜优化",
+    "56040": "中国移动 / CMI｜优化",
+    "56041": "中国移动 / CMI｜优化",
+    "38008": "中国移动 / CMHK｜优化",
+    "4134": "中国电信 / 163｜优化",
+    "4812": "中国电信 / 163｜优化",
+    "4811": "中国电信 / 163｜优化",
+    "4837": "中国联通 / 169｜优化",
+    "17621": "中国联通 / 169｜优化",
+    "23724": "中国联通 / 169｜优化",
+    "4538": "教育网｜优化",
 }
 
 
@@ -1365,7 +1365,7 @@ def _trace_route(ip: str, timeout: int = 18) -> str:
     if rt:
         return rt
     if asns:
-        return f"AS{min(asns, key=int)}"
+        return f"AS{min(asns, key=int)}｜普通"
     return "待检测"
 
 
@@ -1852,7 +1852,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
         print(c(f"  Monte Carlo IP 择优探测结果｜总计获取 {len(display_rows)} 条替换 IP", C.LC))
         _mcis_hdr = ("  " + _pad_cjk("IP 地址", 18, '<') + "  " + _pad_cjk("延迟(ms)", 8, '<') +
                      "  " + _pad_cjk("速度(MB/s)", 14, '<') + "  " + _pad_cjk("地区码", 8, '<') +
-                     "  " + _pad_cjk("所属网段", 16, '<') + "  " + _pad_cjk("线路", 18, '<'))
+                     "  " + _pad_cjk("所属网段", 16, '<') + "  " + _pad_cjk("线路", 24, '<'))
         print(c(_mcis_hdr, C.W))
         for _i, _row in enumerate(display_rows):
             _ip, _lat, _spd, _prefix, _colo, _route = _row
@@ -1872,7 +1872,7 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
             _line = ("  " + _pad_cjk(_ip, 18, '<') + "  " + _pad_cjk(_lat, 8, '<') +
                      "  " + _pad_cjk(_spd or "-", 14, '<') + "  " + _pad_cjk(_colo.upper(), 8, '<') +
                      "  " + _pad_cjk(_prefix, 16, '<') + "  " +
-                     c(_pad_cjk(_route_display, 18, '<'), _r_color))
+                     c(_pad_cjk(_route_display, 24, '<'), _r_color))
             print(c(_line, _color))
 
         _top_prefixes = list(dict.fromkeys(p for _, _, _, p, _, _ in display_rows[:5] if p))
