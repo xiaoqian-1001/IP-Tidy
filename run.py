@@ -1343,7 +1343,6 @@ def _trace_route(ip: str, timeout: int = 18) -> str:
 
     asns: set[str] = set()
     if nt is not None:
-        output = ""
         for mode in (["-T", "-p", "443"], ["-T", "-p", "80"], []):
             try:
                 cmd = [str(nt), "--table", "--no-color", "-q", "1", "-m", "15"]
@@ -1353,10 +1352,10 @@ def _trace_route(ip: str, timeout: int = 18) -> str:
                 output = result.stdout + result.stderr
             except (subprocess.TimeoutExpired, OSError):
                 continue
-            asns = set()
+            mode_asns: set[str] = set()
             _asn_lines = [l for l in output.split("\n") if "ASN" in l]
             if not _asn_lines:
-                asns = set(re.findall(r"AS(\d+)", output))
+                mode_asns = set(re.findall(r"AS(\d+)", output))
             else:
                 for _l in output.split("\n"):
                     if "->" in _l or "Hop" in _l:
@@ -1364,13 +1363,12 @@ def _trace_route(ip: str, timeout: int = 18) -> str:
                     _parts = _l.split()
                     _asns_in_line = set(re.findall(r"AS(\d+)", _l))
                     if _asns_in_line:
-                        asns.update(_asns_in_line)
+                        mode_asns.update(_asns_in_line)
                     else:
                         for _p in _parts[1:]:
                             if _p.isdigit() and 1 <= len(_p) <= 6:
-                                asns.add(_p)
-            if asns:
-                break
+                                mode_asns.add(_p)
+            asns.update(mode_asns)
 
     for asn, label in _ROUTE_TABLE.items():
         if asn in asns:
