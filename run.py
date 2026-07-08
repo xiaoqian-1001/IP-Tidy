@@ -1815,7 +1815,8 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
     step_start = time.time()
 
     print(c(f"  [目标] ASN: {', '.join(f'AS{x}' for x in asns) if asns else '(无)'}", C.GY))
-    print(c(f"  [目标] CIDR: {len(v4_cidrs)} 段", C.GY))
+    if v4_cidrs:
+        print(c(f"  [目标] CIDR: {len(v4_cidrs)} 段", C.GY))
 
     if asns:
         all_cidrs = resolve_asn_cidrs(asns, list(v4_cidrs) if v4_cidrs else [])
