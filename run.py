@@ -2011,7 +2011,7 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
                 latency = parts[10] if len(parts) > 10 else "-"
                 colo_code = parts[8] if len(parts) > 8 else "-"
                 route_label = route_map.get(ip)
-                if not route_label:
+                if not route_label or route_label == "待检测":
                     try:
                         c_net = str(ipaddress.IPv4Network(f"{ip}/24", strict=False))
                         route_label = cidr_label_map.get(c_net, "待检测")
