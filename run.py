@@ -896,9 +896,59 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
     if country_counts:
         print()
         print(c("  地区分布", C.LC))
-        for k, cnt in sorted(country_counts.items(), key=lambda x: -x[1]):
+        regions_list = sorted(country_counts.items(), key=lambda x: -x[1])
+        for k, cnt in regions_list:
             n = c(f"  {k}", C.W)
             print(f"    {n}    {cnt} 段")
+
+        print()
+        ch = _safe_input("  提取某个地区的 CIDR 进行 MCIS 探测？（输入地区名 | 回车跳过）：")
+        if ch.strip():
+            target = ch.strip()
+            _mcis_cidrs = [cidr for cidr, _, country, _, _, _ in rows if target in country]
+            if _mcis_cidrs:
+                print(c(f"  匹配到 {len(_mcis_cidrs)} 个 CIDR", C.G))
+                try:
+                    _mcis_bin = _ensure_mcis_binary()
+                except OSError:
+                    print(c("  [FAIL] MCIS 二进制不可用", C.LR))
+                    sys.exit(0)
+                _result = _run_mcis_process(
+                    _mcis_bin, _mcis_cidrs,
+                    budget=3000, concurrency=200, heads=4, beam=32, top=20, download_top=5,
+                )
+                if _result:
+                    _buffer_text, _result_file = _result
+                    _parsed = _parse_mcis_to_verified(_buffer_text, _result_file)
+                    if _parsed:
+                        _display_rows, _result_lines, _dl_map = _parsed
+                        _verified_file = BASE / "verified.txt"
+                        with open(_verified_file, "w", encoding="utf-8") as f:
+                            f.write(CSV_HEADER + "\n")
+                            for _line in _result_lines:
+                                f.write(_line + "\n")
+                        print(c(f"  结果已保存到 {_verified_file}", C.G))
+                        if _display_rows:
+                            print_sep("-", C.B)
+                            print(c(f"  MCIS 探测结果｜总计获取 {len(_display_rows)} 条", C.LC))
+                            _hdr = ("  " + _pad_cjk("IP 地址", 18, '<') +
+                                    "  " + _pad_cjk("延迟(ms)", 8, '<') +
+                                    "  " + _pad_cjk("速度(MB/s)", 14, '<') +
+                                    "  " + _pad_cjk("地区码", 8, '<') +
+                                    "  " + _pad_cjk("所属网段", 16, '<'))
+                            print(c(_hdr, C.W))
+                            for _i, _row in enumerate(_display_rows[:20]):
+                                _ip, _lat, _spd, _prefix, _colo, _ = _row
+                                _c = C.LG if _i == 0 else (C.LY if _i < 3 else C.W)
+                                print(_c(f"  {_pad_cjk(_ip, 18, '<')}  {_pad_cjk(_lat, 8, '>')}  {_pad_cjk(_spd, 14, '>')}  {_pad_cjk(_colo, 8, '<')}  {_pad_cjk(_prefix, 16, '<')}"))
+                            if len(_display_rows) > 20:
+                                print(c(f"  ... 共 {len(_display_rows)} 条，详见 verified.txt", C.LY))
+                            if _dl_map:
+                                _dl_ok = sum(1 for v in _dl_map.values() if v["ok"] == "true")
+                                _dl_total = len(_dl_map)
+                                print(c(f"  带宽测速通过率: {_dl_ok}/{_dl_total}", C.G if _dl_ok else C.LY))
+            else:
+                print(c(f"  未匹配到包含「{target}」的 CIDR", C.LR))
     sys.exit(0)
 
 
