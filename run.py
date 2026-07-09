@@ -713,6 +713,8 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         "Charlotte": "夏洛特", "Austin": "奥斯汀",
         "Sao Paulo": "圣保罗", "Rio de Janeiro": "里约热内卢",
         "Brasilia": "巴西利亚", "Colombo": "哥伦布",
+        "Palmas": "帕尔马斯", "Curitiba": "库里奇巴",
+        "Guaratuba": "瓜拉图巴", "Ji Paraná": "日帕拉纳",
         "Paris": "巴黎", "Marseille": "马赛",
         "Amsterdam": "阿姆斯特丹", "Rotterdam": "鹿特丹",
         "Tokyo": "东京", "Osaka": "大阪",
@@ -787,7 +789,8 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
             gi = geo_lookup(ip)
             if gi and (gi.get("country_cn") or gi.get("city_cn")):
                 _cc = gi.get("country_cn", "") or gi.get("country", "")
-                _city = gi.get("city_cn", "")
+                _city = gi.get("city_cn", "") or gi.get("city", "")
+                _city = _CITY_CN.get(_city, _city)
                 regions.add(f"{_cc}-{_city}" if _city else _cc)
         if not regions:
             try:
