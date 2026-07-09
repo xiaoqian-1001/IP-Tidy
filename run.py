@@ -815,6 +815,7 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
                                 gi["country"] = _d["country"].get("iso_code", "")
                                 gi["country_cn"] = _d["country"].get("names", {}).get("zh-CN", "")
                                 gi["continent_cn"] = _d.get("continent", {}).get("names", {}).get("zh-CN", "")
+                                gi["continent_en"] = _d.get("continent", {}).get("names", {}).get("en", "")
                     if _city_db.is_file() and not gi.get("city_cn"):
                         with maxminddb.open_database(str(_city_db)) as _r:
                             _d = _r.get(ip)
@@ -833,12 +834,11 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
                     pass
             if gi:
                 if not _dc:
-                    _dc = gi.get("continent_cn", "")
+                    _dc = gi.get("continent_en", "") or gi.get("continent_cn", "")
                 if not _country:
                     _country = gi.get("country_cn", "") or gi.get("country", "")
                 if not _city:
-                    _city = gi.get("city_cn", "") or gi.get("city", "")
-                    _city = _CITY_CN.get(_city, _city) or _city
+                    _city = gi.get("city", "") or gi.get("city_cn", "")
                 if not _asn_org:
                     _asn = gi.get("asn", "")
                     _isp = gi.get("isp", "")

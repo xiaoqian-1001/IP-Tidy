@@ -82,6 +82,7 @@ def lookup(ip: str) -> dict:
                     result["country"] = data["country"].get("iso_code", "")
                     result["country_cn"] = data["country"].get("names", {}).get("zh-CN", "")
                     result["continent_cn"] = data.get("continent", {}).get("names", {}).get("zh-CN", "")
+                    result["continent_en"] = data.get("continent", {}).get("names", {}).get("en", "")
                 subs = data.get("subdivisions", [])
                 result["region"] = subs[0].get("iso_code", "") if subs else ""
                 result["city"] = (data.get("city") or {}).get("names", {}).get("en", "")
