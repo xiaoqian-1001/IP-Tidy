@@ -284,11 +284,14 @@ def init_runtime() -> ScannerConfig:
     if geo_available():
         g = geo_lookup(pub_ip)
         cfg.global_ip = pub_ip
-        cfg.global_country = g.get("country", "")
-        cfg.global_city = g.get("city", "")
+        cfg.global_country = g.get("country_cn", "") or g.get("country", "")
+        cfg.global_city = g.get("city_cn", "") or g.get("city", "")
         cfg.global_isp = g.get("isp", "")
         print(c("  [GeoIP] 离线数据库 (MaxMind GeoLite2)", C.CY))
-        print(c(f"  地区: {cfg.global_city}, {cfg.global_country}  机构: {cfg.global_isp}", C.GY))
+        loc = cfg.global_country
+        if cfg.global_city:
+            loc = f"{cfg.global_city}, {cfg.global_country}"
+        print(c(f"  地区: {loc}  机构: {cfg.global_isp}", C.GY))
     else:
         cfg.global_ip, cfg.global_country, cfg.global_isp, cfg.global_city = detect_isp(pub_ip)
     return cfg
