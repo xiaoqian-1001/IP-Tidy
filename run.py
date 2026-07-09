@@ -657,42 +657,15 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         print(c("  [FAIL] 无可用 CIDR", C.LR))
         return
     print(c(f"  CIDR 数量: {len(all_cidrs)} 段", C.G))
+    if not geo_available():
+        print(c("  [WARN] MaxMind 数据库未加载，将使用在线查询", C.LY))
+    else:
+        try:
+            from lib.geoip import _init as _geo_reinit
+            _geo_reinit()
+        except Exception:
+            pass
 
-    _COUNTRY_CN = {
-        "US": "美国", "HK": "香港", "JP": "日本", "SG": "新加坡",
-        "KR": "韩国", "TW": "台湾", "CN": "中国", "GB": "英国",
-        "DE": "德国", "FR": "法国", "NL": "荷兰", "IT": "意大利",
-        "ES": "西班牙", "CA": "加拿大", "AU": "澳大利亚", "BR": "巴西",
-        "IN": "印度", "RU": "俄罗斯", "ZA": "南非", "AE": "阿联酋",
-        "TH": "泰国", "VN": "越南", "MY": "马来西亚", "PH": "菲律宾",
-        "ID": "印尼", "SE": "瑞典", "CH": "瑞士", "IE": "爱尔兰",
-        "IL": "以色列", "TR": "土耳其", "PL": "波兰", "UA": "乌克兰",
-        "RO": "罗马尼亚", "CZ": "捷克", "HU": "匈牙利", "GR": "希腊",
-        "NO": "挪威", "DK": "丹麦", "FI": "芬兰", "PT": "葡萄牙",
-        "AT": "奥地利", "BE": "比利时", "BG": "保加利亚", "HR": "克罗地亚",
-        "LT": "立陶宛", "LV": "拉脱维亚", "EE": "爱沙尼亚", "SK": "斯洛伐克",
-        "SI": "斯洛文尼亚", "RS": "塞尔维亚", "MK": "北马其顿",
-        "United Arab Emirates": "阿联酋",
-        "Italy": "意大利", "Netherlands": "荷兰",
-        "United States": "美国", "United Kingdom": "英国",
-        "Germany": "德国", "France": "法国",
-        "Japan": "日本", "Singapore": "新加坡",
-        "South Korea": "韩国", "Taiwan": "台湾",
-        "Brazil": "巴西", "Russia": "俄罗斯",
-        "India": "印度", "South Africa": "南非",
-        "Thailand": "泰国", "Vietnam": "越南",
-        "Malaysia": "马来西亚", "Philippines": "菲律宾",
-        "Indonesia": "印尼", "Sweden": "瑞典",
-        "Switzerland": "瑞士", "Ireland": "爱尔兰",
-        "Israel": "以色列", "Turkey": "土耳其",
-        "Poland": "波兰", "Ukraine": "乌克兰",
-        "Romania": "罗马尼亚", "Czech Republic": "捷克",
-        "Greece": "希腊", "Norway": "挪威",
-        "Denmark": "丹麦", "Finland": "芬兰",
-        "Portugal": "葡萄牙", "Austria": "奥地利",
-        "Belgium": "比利时", "Bulgaria": "保加利亚",
-        "Croatia": "克罗地亚", "Estonia": "爱沙尼亚",
-    }
     _CITY_CN = {
         "Curitiba": "库里奇巴", "Guaratuba": "瓜拉图巴",
         "Ji Paraná": "日帕拉纳", "Milan": "米兰",
@@ -790,6 +763,37 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         _asn_org: str = ""
         for ip in samples:
             gi = geo_lookup(ip)
+            if not gi:
+                try:
+                    import maxminddb
+                    _mmdb_dir = Path.home() / ".config" / "ip-tidy"
+                    _cnt_db = _mmdb_dir / "GeoLite2-Country.mmdb"
+                    _city_db = _mmdb_dir / "GeoLite2-City.mmdb"
+                    _asn_db = _mmdb_dir / "GeoLite2-ASN.mmdb"
+                    gi = {}
+                    if _cnt_db.is_file():
+                        with maxminddb.open_database(str(_cnt_db)) as _r:
+                            _d = _r.get(ip)
+                            if _d and _d.get("country"):
+                                gi["country"] = _d["country"].get("iso_code", "")
+                                gi["country_cn"] = _d["country"].get("names", {}).get("zh-CN", "")
+                                gi["continent_cn"] = _d.get("continent", {}).get("names", {}).get("zh-CN", "")
+                    if _city_db.is_file() and not gi.get("city_cn"):
+                        with maxminddb.open_database(str(_city_db)) as _r:
+                            _d = _r.get(ip)
+                            if _d:
+                                if _d.get("country") and not gi.get("country_cn"):
+                                    gi["country_cn"] = _d["country"].get("names", {}).get("zh-CN", "")
+                                gi["city_cn"] = (_d.get("city") or {}).get("names", {}).get("zh-CN", "")
+                                gi["city"] = (_d.get("city") or {}).get("names", {}).get("en", "") if not gi.get("city_cn") else ""
+                    if _asn_db.is_file():
+                        with maxminddb.open_database(str(_asn_db)) as _r:
+                            _d = _r.get(ip)
+                            if _d:
+                                gi["asn"] = f"AS{_d.get('autonomous_system_number', '')}" if _d.get('autonomous_system_number') else ""
+                                gi["isp"] = _d.get("autonomous_system_organization", "")
+                except Exception:
+                    pass
             if gi:
                 if not _dc:
                     _dc = gi.get("continent_cn", "")
