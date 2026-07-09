@@ -949,7 +949,10 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         _mcis_cidrs = [cidr for cidr, _, country, _, _, _ in rows if target in country]
         if not _mcis_cidrs:
             sys.exit(0)
+        print_step("MCIS 探测")
         print(c(f"  匹配到 {len(_mcis_cidrs)} 个 CIDR", C.G))
+        print(c(f"  运行参数：预算 3000 | 并发 200 | 搜索头 4 | 波束 32 | 保留 TOP20 | 带宽测速 TOP5", C.NW))
+        _mcis_start = time.time()
         try:
             _mcis_bin = _ensure_mcis_binary()
         except OSError:
@@ -970,25 +973,65 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
                     for _line in _result_lines:
                         f.write(_line + "\n")
                 print(c(f"  结果已保存到 {_verified_file}", C.G))
+                if _dl_map:
+                    _dl_ok = sum(1 for v in _dl_map.values() if v["ok"] == "true")
+                    _dl_total = len(_dl_map)
+                    _rate = _dl_ok * 100 // _dl_total if _dl_total else 0
+                    print(c(f"  [MCIS] 带宽测速 | 通过率: {_rate}% ({_dl_ok}/{_dl_total})", C.G if _dl_ok > 0 else C.LY))
+                    if _dl_ok == 0:
+                        print(c("         测速全部失败不代表 IP 不可用，MCIS 内置测速受网络环境影响较大，", C.LY))
+                        print(c("         延迟低的 IP 手动测速通常正常，建议以延迟为准筛选", C.LY))
                 if _display_rows:
+                    _display_rows = _trace_routes_concurrent(_display_rows)
+                    def _route_sort_key(r):
+                        _route = r[5] if len(r) > 5 and r[5] else ""
+                        if "精品" in _route: return (0,)
+                        if "优化" in _route: return (1,)
+                        if not _route: return (3,)
+                        return (2,)
+                    _display_rows.sort(key=lambda r: (_route_sort_key(r), r[2] == "", float(r[1]) if r[1] else 99999))
                     print_sep("-", C.B)
                     print(c(f"  MCIS 探测结果｜总计获取 {len(_display_rows)} 条", C.LC))
                     _hdr = ("  " + _pad_cjk("IP 地址", 18, '<') +
                             "  " + _pad_cjk("延迟(ms)", 8, '<') +
                             "  " + _pad_cjk("速度(MB/s)", 14, '<') +
                             "  " + _pad_cjk("地区码", 8, '<') +
-                            "  " + _pad_cjk("所属网段", 16, '<'))
+                            "  " + _pad_cjk("所属网段", 16, '<') +
+                            "  " + _pad_cjk("线路", 24, '<'))
                     print(c(_hdr, C.W))
-                    for _i, _row in enumerate(_display_rows[:20]):
-                        _ip, _lat, _spd, _prefix, _colo, _ = _row
-                        _color = C.LG if _i == 0 else (C.LY if _i < 3 else C.W)
-                        print(c(f"  {_pad_cjk(_ip, 18, '<')}  {_pad_cjk(_lat, 8, '>')}  {_pad_cjk(_spd, 14, '>')}  {_pad_cjk(_colo, 8, '<')}  {_pad_cjk(_prefix, 16, '<')}", _color))
-                    if len(_display_rows) > 20:
-                        print(c(f"  ... 共 {len(_display_rows)} 条，详见 verified.txt", C.LY))
-                    if _dl_map:
-                        _dl_ok = sum(1 for v in _dl_map.values() if v["ok"] == "true")
-                        _dl_total = len(_dl_map)
-                        print(c(f"  带宽测速通过率: {_dl_ok}/{_dl_total}", C.G if _dl_ok else C.LY))
+                    for _i, _row in enumerate(_display_rows):
+                        _ip, _lat, _spd, _prefix, _colo, _route = _row
+                        if _i == 0:
+                            _color = C.LG
+                        elif _i < 3:
+                            _color = C.LY
+                        else:
+                            _color = C.W
+                        _route_display = _route or "-"
+                        if "精品" in _route_display:
+                            _r_color = C.LG
+                        elif "优化" in _route_display:
+                            _r_color = C.LY
+                        else:
+                            _r_color = C.W
+                        _line = ("  " + _pad_cjk(_ip, 18, '<') + "  " + _pad_cjk(_lat, 8, '<') +
+                                 "  " + _pad_cjk(_spd or "-", 14, '<') + "  " + _pad_cjk(_colo.upper(), 8, '<') +
+                                 "  " + _pad_cjk(_prefix, 16, '<') + "  " +
+                                 c(_pad_cjk(_route_display, 24, '<'), _r_color))
+                        print(c(_line, _color))
+                    _top_prefixes = list(dict.fromkeys(p for _, _, _, p, _, _ in _display_rows[:5] if p))
+                    if _top_prefixes:
+                        print(c(f"  TOP5 IP 所属网段：{'、'.join(_top_prefixes)}", C.G))
+                    _elapsed = int(time.time() - _mcis_start)
+                    _m, _s = divmod(_elapsed, 60)
+                    _summary = f"本次共探测 {len(_result_lines)} 条 IP"
+                    if _m:
+                        print(c(f"  [MCIS] {_summary}, 本步耗时: {_m}分{_s}秒", C.GY))
+                    else:
+                        print(c(f"  [MCIS] {_summary}, 本步耗时: {_elapsed}秒", C.GY))
+                _result_file.unlink(missing_ok=True)
+                for _bkp in BASE.glob("mcis_result_*.csv.bkp"):
+                    _bkp.unlink(missing_ok=True)
     sys.exit(0)
 
 
