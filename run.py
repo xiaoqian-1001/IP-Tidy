@@ -268,6 +268,7 @@ class ScannerConfig:
     global_country: str = ""
     global_isp: str = ""
     global_city: str = ""
+    global_loc: str = ""
     smart_mode: bool = False
 
 
@@ -292,6 +293,7 @@ def init_runtime() -> ScannerConfig:
         if cfg.global_city:
             loc = f"{cfg.global_city}, {cfg.global_country}"
         print(c(f"  地区: {loc}  机构: {cfg.global_isp}", C.GY))
+        cfg.global_loc = loc
     else:
         cfg.global_ip, cfg.global_country, cfg.global_isp, cfg.global_city = detect_isp(pub_ip)
     return cfg
@@ -1011,8 +1013,8 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
                     _display_rows = _trace_routes_concurrent(_display_rows)
                     def _route_sort_key(r):
                         _route = r[5] if len(r) > 5 and r[5] else ""
-                        if "精品" in _route: return (0,)
-                        if "优化" in _route: return (1,)
+                        if "｜精品" in _route: return (0,)
+                        if "｜优化" in _route: return (1,)
                         if not _route: return (3,)
                         return (2,)
                     _display_rows.sort(key=lambda r: (_route_sort_key(r), r[2] == "", float(r[1]) if r[1] else 99999))
@@ -1034,594 +1036,10 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
                         else:
                             _color = C.W
                         _route_display = _route or "-"
-                        if "精品" in _route_display:
-                            _r_color = C.LG
-                        elif "优化" in _route_display:
-                            _r_color = C.LY
-                        else:
-                            _r_color = C.W
-                        _line = ("  " + _pad_cjk(_ip, 18, '<') + "  " + _pad_cjk(_lat, 8, '<') +
-                                 "  " + _pad_cjk(_spd or "-", 14, '<') + "  " + _pad_cjk(_colo.upper(), 8, '<') +
-                                 "  " + _pad_cjk(_prefix, 16, '<') + "  " +
-                                 c(_pad_cjk(_route_display, 24, '<'), _r_color))
-                        print(c(_line, _color))
-                    _top_prefixes = list(dict.fromkeys(p for _, _, _, p, _, _ in _display_rows[:5] if p))
-                    if _top_prefixes:
-                        print(c(f"  TOP5 IP 所属网段：{'、'.join(_top_prefixes)}", C.G))
-                    _elapsed = int(time.time() - _mcis_start)
-                    _m, _s = divmod(_elapsed, 60)
-                    _summary = f"本次共探测 {len(_result_lines)} 条 IP"
-                    if _m:
-                        print(c(f"  [MCIS] {_summary}, 本步耗时: {_m}分{_s}秒", C.GY))
-                    else:
-                        print(c(f"  [MCIS] {_summary}, 本步耗时: {_elapsed}秒", C.GY))
-                _result_file.unlink(missing_ok=True)
-                for _bkp in BASE.glob("mcis_result_*.csv.bkp"):
-                    _bkp.unlink(missing_ok=True)
-    sys.exit(0)
-
-
-def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
-                 do_speed: bool, do_deep: bool, do_mcis: bool) -> list[tuple[str, Callable[[], object]]]:
-    steps: list[tuple[str, Callable[[], object]]] = [
-        ("Step 1  通过 ASN 提取 CIDR 网段", lambda: step_fetch_prefixes(cfg, asns, v4_cidrs)),
-    ]
-    step_num = 1
-    if a.mcis_only:
-        step_num += 1
-        steps.append((f"Step {step_num}  MCIS 搜索", lambda: step_montecarlo(cfg, auto_mcis=True, colo=a.colo, colo_exclude=a.colo_exclude, do_route_trace=not a.no_route, download_url=a.mcis_url, host=a.mcis_host)))
-        total = len(steps)
-        steps = [(f"{lbl.replace('Step ', f'Step {i+1}/{total}  ')}", fn) for i, (lbl, fn) in enumerate(steps)]
-        return steps
-    if a.route_trace_only:
-        step_num += 1
-        steps.append((f"Step {step_num}  路由追踪", lambda: step_route_trace_discovery(cfg, asns, v4_cidrs, colo=a.colo, colo_exclude=a.colo_exclude, download_url=a.mcis_url, host=a.mcis_host)))
-        total = len(steps)
-        steps = [(f"{lbl.replace('Step ', f'Step {i+1}/{total}  ')}", fn) for i, (lbl, fn) in enumerate(steps)]
-        return steps
-    if a.smart:
-        step_num += 1
-        cfg.smart_mode = True
-        steps.append((f"Step {step_num}  子网分级探活", lambda: _smart_wrapper(cfg)))
-    if a.skip_masscan:
-        print(c("  (跳过 Masscan, 使用已有结果)", C.NW))
-    else:
-        step_num += 1
-        steps.append((f"Step {step_num}  基于 Masscan 执行端口扫描任务", lambda: step_masscan(cfg)))
-    step_num += 1
-    steps.append((f"Step {step_num}  Cloudflare IP 检测与 API 精准过滤", lambda: _pipeline(cfg)))
-    step_num += 1
-    steps.append((f"Step {step_num}  CIDR深度挖掘", lambda: step_cidr_deep_mine(cfg)))
-    if do_mcis:
-        step_num += 1
-        steps.append((f"Step {step_num}  MCIS 搜索", lambda: step_montecarlo(cfg, auto_mcis=a.mcis, colo=a.colo, colo_exclude=a.colo_exclude, do_route_trace=not a.no_route, download_url=a.mcis_url, host=a.mcis_host)))
-    elif do_speed:
-        step_num += 1
-        steps.append((f"Step {step_num}  网络延迟/带宽速率检测", lambda: step_speed_test(cfg)))
-    if do_deep:
-        step_num += 1
-        steps.append((f"Step {step_num}  宽端口扫描", lambda: step_wide_port_scan(cfg)))
-    total = len(steps)
-    steps = [(f"{lbl.replace('Step ', f'Step {i+1}/{total}  ')}", fn) for i, (lbl, fn) in enumerate(steps)]
-    return steps
-
-
-def _read_verified_entries() -> list[str]:
-    """Read verified.txt, return list of 'ip:port' strings."""
-    verified_file = BASE / "verified.txt"
-    if not verified_file.exists() or verified_file.stat().st_size == 0:
-        return []
-    entries: list[str] = []
-    with open(verified_file, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith("IP"):
-                continue
-            parts = line.split(",")
-            if len(parts) >= 2:
-                entries.append(f"{parts[0]}:{parts[1]}")
-    return entries
-
-
-def _safe_unlink(p: Path) -> None:
-    try:
-        p.unlink()
-    except OSError:
-        pass
-
-
-def _safe_input(prompt: str, default: str = "", to_lower: bool = False) -> str:
-    try:
-        val = input(c(prompt, C.Y)).strip()
-        return val.lower() if to_lower else val
-    except EOFError:
-        return default
-    except KeyboardInterrupt:
-        print(c("\n  [终止] 用户中断", C.LR))
-        sys.exit(SIGINT_EXIT_CODE)
-
-
-def _cleanup_temp_files(a) -> None:
-    for stale in ("cidrs.txt", "cidrs_v4.txt",
-                  "masscan_result.xml", "cf_hits.txt", "verified.txt"):
-        _safe_unlink(BASE / stale)
-    for p in BASE.glob("masscan_batch_*.xml"):
-        _safe_unlink(p)
-    for p in BASE.glob("deep_*.xml"):
-        _safe_unlink(p)
-    for fname in ("deep_ips.txt", ".cfst_ips.txt"):
-        _safe_unlink(BASE / fname)
-    if not a.skip_masscan:
-        _safe_unlink(BASE / "masscan_result.txt")
-    incr_dir = INCR_DIR
-    if incr_dir.exists():
-        state_files = sorted(incr_dir.glob("*.state"))
-        if len(state_files) > 1:
-            for sf in state_files[:-1]:
-                _safe_unlink(sf)
-
-
-def _generate_csv(verified_file: Path, asns: list[str], a,
-                  incr_tag: str, incr_saved_results: list[str],
-                  incr_full_cidrs: list[str], v4_list: list[str],
-                  passed_count: int) -> tuple[Optional[Path], int]:
-    csv_path = None
-    if not (verified_file.exists() and verified_file.stat().st_size > 0):
-        return csv_path, passed_count
-
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    tag = "_".join(asns) if asns else "cidr"
-    csv_path = BASE / f"output_{tag}_{ts}.csv"
-
-    parsed: list[str] = []
-    with open(verified_file, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith("IP"):
-                continue
-            if line.count(",") >= 8:
-                parsed.append(line)
-
-    with open(csv_path, "w", encoding="utf-8-sig") as f:
-        f.write(CSV_HEADER + "\n")
-        for p in parsed:
-            parts = p.split(",")
-            f.write(_format_csv_line(parts, do_geo=True) + "\n")
-
-    print(c(f"  结果: {len(parsed)} 条 -> {csv_path.name}", C.G))
-
-    if a.incremental and incr_tag and incr_saved_results:
-        merged: dict[str, str] = {}
-        for line in incr_saved_results:
-            if not line or line.startswith("#") or line.startswith("IP"):
-                continue
-            parts = line.split(",", 2)
-            key = f"{parts[0]}:{parts[1]}" if len(parts) >= 2 else line
-            merged[key] = line
-        new_count = 0
-        for line in parsed:
-            parts = line.split(",", 2)
-            key = f"{parts[0]}:{parts[1]}" if len(parts) >= 2 else line
-            if key not in merged:
-                new_count += 1
-            merged[key] = line
-        merged_lines = sorted(merged.values())
-        with open(csv_path, "w", encoding="utf-8-sig") as f:
-            f.write(CSV_HEADER + "\n")
-            for p in merged_lines:
-                f.write(_format_csv_line(p.split(",")) + "\n")
-        print(c(f"  合并: {len(incr_saved_results) - 1} 历史 + {new_count} 新增 -> {len(merged)} 条", C.CY))
-        passed_count = len(merged)
-        save_incremental_state(incr_tag, incr_full_cidrs or v4_list, merged_lines)
-    elif a.incremental and incr_tag:
-        if incr_full_cidrs:
-            save_incremental_state(incr_tag, incr_full_cidrs, parsed)
-        else:
-            save_incremental_state(incr_tag, v4_list, parsed)
-    return csv_path, passed_count
-
-
-CFST_DIR = Path.home() / ".config" / "ip-tidy"
-CFST_BIN = CFST_DIR / "cfst"
-MCIS_DIR = CFST_DIR
-MCIS_BIN = MCIS_DIR / "mcis"
-CFST_DEFAULT_LIMIT = 15
-CFST_READ_BUFFER_SIZE = 65536
-CFST_HEARTBEAT_THRESHOLD = 10
-CFST_MAX_HEARTBEAT_PCT = 95
-CFST_MAX_SECONDS = 600
-HTTP_SERVER_PORT = 8899
-HTTP_SERVER_PORT_RANGE_END = 9900
-SIGINT_EXIT_CODE = 130
-
-
-def _ensure_cfst_binary() -> Path:
-    if CFST_BIN.exists() and os.access(str(CFST_BIN), os.X_OK):
-        return CFST_BIN
-
-    import platform as _platform
-    _arch = _platform.machine()
-    if _arch == "x86_64":
-        _cfst_arch = "amd64"
-    elif _arch in ("aarch64", "arm64"):
-        _cfst_arch = "arm64"
-    else:
-        _cfst_arch = "amd64"
-
-    _url = f"https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/cfst_linux_{_cfst_arch}.tar.gz"
-    print(c(f"  [CFST] 下载 cfst 二进制... ({_url})", C.CY))
-
-    CFST_DIR.mkdir(parents=True, exist_ok=True)
-    import tempfile, tarfile, urllib.request as _req
-    _tmp_path = ""
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as _tmp:
-            _tmp_path = _tmp.name
-        _req.urlretrieve(_url, _tmp_path)
-        with tarfile.open(_tmp_path, "r:gz") as _tar:
-            _tar.extract("cfst", str(CFST_DIR))
-        os.chmod(str(CFST_BIN), 0o755)
-        print(c(f"  [CFST] 已安装到 {CFST_BIN}", C.G))
-        return CFST_BIN
-    except Exception as _e:
-        print(c(f"  [FAIL] cfst 下载失败: {_e}", C.LR))
-        print(c(f"  [提示] 请手动下载 cfst 并放置到 {CFST_BIN}", C.LY))
-        print(c(f"  [提示] 下载地址: https://github.com/XIU2/CloudflareSpeedTest/releases", C.LY))
-        raise OSError(f"cfst 下载失败: {_e}")
-    finally:
-        if _tmp_path and os.path.exists(_tmp_path):
-            os.unlink(_tmp_path)
-
-
-def _parse_cfst_buffer(_buffer: bytes,
-                        _phase: str, _current: int,
-                        _delay_total: int, _download_total: int):
-    while b"\r" in _buffer or b"\n" in _buffer:
-        _idx_r = _buffer.find(b"\r")
-        _idx_n = _buffer.find(b"\n")
-        if _idx_r == -1:
-            _idx_r = len(_buffer)
-        if _idx_n == -1:
-            _idx_n = len(_buffer)
-        _split_idx = min(_idx_r, _idx_n)
-
-        _line_bytes = _buffer[:_split_idx]
-        _buffer = _buffer[_split_idx + 1:]
-
-        _line = _line_bytes.decode("utf-8", errors="replace").strip()
-        if not _line:
-            continue
-
-        if "下载测速" in _line:
-            _phase = "download"
-        elif "延迟测速" in _line and _phase == "delay":
-            pass
-        elif "可用:" in _line and _phase == "delay":
-            pass
-
-        _m = re.search(r"(\d+)\s*/\s*(\d+)", _line)
-        if _m and ("可用:" in _line or "延迟" in _line or "下载" in _line):
-            _current = int(_m.group(1))
-            _detected = int(_m.group(2))
-            if _phase == "delay":
-                if _detected > _delay_total:
-                    _delay_total = _detected
-            else:
-                if _detected > _download_total:
-                    _download_total = _detected
-
-    return _buffer, _phase, _current, _delay_total, _download_total
-
-
-def _compute_cfst_progress(_phase: str, _current: int,
-                           _delay_total: int, _download_total: int) -> float:
-    _delay_total = _delay_total or 1
-    _download_total = _download_total or 1
-    _total = _delay_total + _download_total
-    if _phase == "delay":
-        return _current / _delay_total * (_delay_total / _total * 100)
-    base = _delay_total / _total * 100
-    if _current >= _download_total:
-        return 100.0
-    return base + _current / _download_total * (_download_total / _total * 100)
-
-
-def _cjk_width(s: str) -> int:
-    w = 0
-    for c in s:
-        w += 2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1
-    return w
-
-
-def _pad_cjk(s: str, width: int, align: str = '<') -> str:
-    cur = _cjk_width(s)
-    pad = max(0, width - cur)
-    if align == '<':
-        return s + ' ' * pad
-    elif align == '>':
-        return ' ' * pad + s
-    else:
-        return ' ' * (pad // 2) + s + ' ' * (pad - pad // 2)
-
-
-def _run_cfst_speedtest(a, tag: str) -> None:
-    entries = _read_verified_entries()
-    ips: set[str] = {e.split(":")[0] for e in entries}
-    if not ips:
-        return
-
-    _v = getattr(a, "cfst_count", None)
-    cfst_limit = _v if _v is not None else CFST_DEFAULT_LIMIT
-
-    if not a.cfst:
-        ch = _safe_input(f"  是否启动测速择优流程？当前待检测 IP 总量 {len(ips)} 条（Y 确认 | 回车跳过）：", to_lower=True)
-        if ch != "y":
-            print(c("  [已跳过] CloudflareSpeedTest 测速", C.LY))
-            return
-        cnt = _safe_input(f"  最优 IP 保留数量（默认值{CFST_DEFAULT_LIMIT} | 回车跳过）：")
-        if cnt.isdigit() and int(cnt) > 0:
-            cfst_limit = int(cnt)
-        elif cnt:
-            print(c(f"  无效输入，使用默认: {CFST_DEFAULT_LIMIT}", C.LY))
-    else:
-        print(c(f"  [CFST] CloudflareSpeedTest 测速 ({len(ips)} 个 IP, 取前 {cfst_limit} 条)", C.G))
-
-    try:
-        cfst_bin = _ensure_cfst_binary()
-    except OSError:
-        return
-
-    from lib.rtt_sorter import rtt_sort
-    cands = [f"{ip}:443" for ip in ips]
-    rtt_results = rtt_sort(cands, top_k=len(cands))
-
-    # CF-RAY 过滤：剔除未回传 CF-RAY 头的非 CF IP
-    cf_valid = [r for r in rtt_results if r.cf_ray]
-    filtered = len(rtt_results) - len(cf_valid)
-    if filtered:
-        print(c(f"  [RTT] 存在 {filtered} 条 IP 无法通过 CF-RAY 身份校验，识别为非 Cloudflare 官方节点，已执行过滤移除操作", C.Y))
-
-    # 按 colo 分组，按比例分配各 colo 名额
-    if cf_valid:
-        import heapq
-        from collections import defaultdict, Counter
-        colo_set = {r.colo or "unknown" for r in cf_valid}
-        colo_counts = Counter(r.colo or "unknown" for r in cf_valid)
-        num_colos = len(colo_set)
-        total = len(cf_valid)
-        base_cap = total // num_colos + 1
-        target_pool = base_cap * num_colos
-        per_colo: dict[str, list[tuple[float, str]]] = defaultdict(list)
-        for r in cf_valid:
-            colo = r.colo or "unknown"
-            cap = max(1, round(target_pool * colo_counts[colo] / total))
-            heap = per_colo[colo]
-            if len(heap) < cap:
-                heapq.heappush(heap, (r.rtt_ms, r.ip))
-            else:
-                heapq.heappushpop(heap, (r.rtt_ms, r.ip))
-        ips = {ip for heap in per_colo.values() for _, ip in heap}
-        print(c(f"  [RTT] 完成 {len(cf_valid)} 项 CF-RAY 校验，依据 COLO 机房分组策略过滤，保留 {len(ips)} 个有效 IP", C.G))
-    else:
-        ips = {r.ip for r in rtt_results}
-        print(c("  [RTT] 无 IP 通过 CF-RAY 验证，回退到全部存活 IP", C.LY))
-
-    ip_file = BASE / ".cfst_ips.txt"
-    ip_file.write_text("\n".join(sorted(ips)) + "\n")
-
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    result_file = BASE / f"cfst_{tag}_{ts}.csv"
-
-    print(c(f"  [CFST] 测速流程已初始化，将选取综合表现最优的前 {cfst_limit} 条 IP 执行测速检测", C.CY))
-
-    import fcntl as _fcntl
-
-    proc = subprocess.Popen(
-        [str(cfst_bin), "-f", str(ip_file),
-         "-p", str(cfst_limit),
-         "-o", str(result_file)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        bufsize=0,
-        cwd=str(BASE)
-    )
-
-    fd = proc.stdout.fileno()
-    _fl = _fcntl.fcntl(fd, _fcntl.F_GETFL)
-    _fcntl.fcntl(fd, _fcntl.F_SETFL, _fl | os.O_NONBLOCK)
-
-    _buffer = b""
-    _start_time = time.time()
-    _phase = "delay"
-    _current = 0
-    _delay_total = len(ips)
-    _download_total = min(len(ips), cfst_limit)
-    _last_update = time.time()
-    _heartbeat_count = 0
-
-    while True:
-        if time.time() - _start_time > CFST_MAX_SECONDS:
-            print(c(f"\n  [CFST] 超时 {CFST_MAX_SECONDS}s，终止进程", C.LR))
-            proc.terminate()
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-            proc.stdout.close()
-            write_progress_done(" | CFST 超时终止")
-            ip_file.unlink(missing_ok=True)
-            return
-        if proc.poll() is not None:
-            try:
-                while True:
-                    _chunk = os.read(fd, CFST_READ_BUFFER_SIZE)
-                    if not _chunk:
-                        break
-                    _buffer += _chunk
-            except (BlockingIOError, OSError):
-                pass
-            break
-
-        _updated = False
-        try:
-            _chunk = os.read(fd, CFST_READ_BUFFER_SIZE)
-            if _chunk:
-                _buffer += _chunk
-                _updated = True
-        except (BlockingIOError, OSError):
-            pass
-
-        _buffer, _phase, _current, _delay_total, _download_total = _parse_cfst_buffer(
-            _buffer, _phase, _current, _delay_total, _download_total
-        )
-
-        # 心跳计数
-        if not _updated:
-            _heartbeat_count += 1
-        else:
-            _heartbeat_count = 0
-
-        # 延迟阶段达到 100% 后连续无更新，强制切到下载阶段
-        if _phase == "delay" and _current >= _delay_total and _heartbeat_count > 5:
-            _phase = "download"
-            _current = 0
-            _heartbeat_count = 0
-
-        _elapsed = time.time() - _start_time
-        _pct = _compute_cfst_progress(_phase, _current, _delay_total, _download_total)
-
-        # 心跳回退：一段时间无进度更新时使用时间估算
-        if _heartbeat_count > CFST_HEARTBEAT_THRESHOLD:
-            _total_estimated = max(_elapsed * 2, 60)
-            _pct = min(_elapsed / _total_estimated * 100, CFST_MAX_HEARTBEAT_PCT)
-
-        if _pct > 1:
-            _eta = _elapsed / _pct * (100 - _pct)
-            _eta_s = f" | ETA {int(_eta // 60)}分{int(_eta % 60)}秒"
-        else:
-            _eta_s = ""
-        _phase_label = "延迟测速" if _phase == "delay" else "下载测速"
-        write_progress(_pct, f" | CFST {_phase_label}{_eta_s}")
-        time.sleep(1.0 / max(1, len(ips) ** 0.5))
-
-    _buffer, _phase, _current, _delay_total, _download_total = _parse_cfst_buffer(
-        _buffer, _phase, _current, _delay_total, _download_total
-    )
-
-    proc.wait()
-    proc.stdout.close()
-    write_progress_done(" | CFST测速完成")
-
-    ip_file.unlink(missing_ok=True)
-
-    if proc.returncode != 0:
-        print()
-        print(c(f"  [FAIL] cfst 返回码 {proc.returncode}", C.LR))
-        return
-
-    import csv as _csv
-
-    _rows: list[list[str]] = []
-    _hdr: list[str] = []
-    if result_file.exists() and result_file.stat().st_size > 0:
-        try:
-            with open(result_file, "r", newline="", encoding="utf-8") as _f:
-                _reader = _csv.reader(_f)
-                try:
-                    _hdr = next(_reader) or []
-                except StopIteration:
-                    _hdr = []
-                _rows = list(_reader)
-        except (OSError, _csv.Error):
-            _rows = []
-
-    if not _rows:
-        print(c("  [CFST] 结果文件为空或无有效数据", C.LY))
-        return
-
-    _ip_col = -1
-    _lat_col = -1
-    _speed_col = -1
-    _sent_col = -1
-    _recv_col = -1
-    _loss_col = -1
-    for _i, _col in enumerate(_hdr):
-        _cn = _col.strip().lower()
-        if "ip" in _cn or "地址" in _cn:
-            _ip_col = _i
-        elif "已发送" in _cn or "sent" == _cn:
-            _sent_col = _i
-        elif "已接收" in _cn or "received" in _cn or "recv" == _cn:
-            _recv_col = _i
-        elif "丢包" in _cn or "loss" in _cn:
-            _loss_col = _i
-        elif "延迟" in _cn or "latency" in _cn or "rtt" in _cn:
-            _lat_col = _i
-        elif "速度" in _cn or "speed" in _cn or "mb/s" in _cn or "download" in _cn:
-            _speed_col = _i
-    if _ip_col < 0:
-        _ip_col = 0
-    if _lat_col < 0:
-        _lat_col = 5
-    if _speed_col < 0:
-        _speed_col = 6
-
-    _rtt_map = {r.ip: r for r in rtt_results}
-    _scored: list[tuple[float, float, list[str]]] = []
-    for _rw in _rows:
-        if not _rw or len(_rw) <= max(_ip_col, _lat_col, _speed_col):
-            continue
-        try:
-            _ip = _rw[_ip_col].strip()
-            _lat = float(_rw[_lat_col])
-            _speed_mbs = float(_rw[_speed_col])
-        except (ValueError, IndexError):
-            continue
-        _jitter = _rtt_map[_ip].http_jitter_ms if _ip in _rtt_map else 0
-        _penalty = max(0.1, 1 + 0.01 * _lat + 0.02 * _jitter)
-        _score = _speed_mbs / _penalty
-        _scored.append((_score, _speed_mbs, _rw))
-
-    _scored.sort(key=lambda x: (-x[0], -x[1]))
-    _scored = [x for x in _scored if x[1] > 0]
-
-    _ordered: dict[str, list[str]] = {}
-    for _rw in _rows:
-        if _rw:
-            _ordered[_rw[_ip_col].strip()] = _rw
-    with open(result_file, "w", newline="", encoding="utf-8") as _f:
-        _writer = _csv.writer(_f)
-        if _hdr:
-            _writer.writerow(_hdr)
-        for _s, _bw, _rw in _scored:
-            _key = _rw[_ip_col].strip()
-            if _key in _ordered:
-                _writer.writerow(_rw)
-    print(c("  [SCORE] 加权评分重排完毕，公式: speed / (1 + 0.01*latency + 0.02*jitter)", C.G))
-
-    print_sep("-", C.B)
-    print(c(f"  CloudflareSpeedTest 测速优选结果｜按加权评分排序，合计 {len(_scored)} 条最优 IP", C.LC))
-    if not _scored:
-        print(c("  (无下载速度 > 0 的 IP，可能网络环境不稳定或 CFST 参数需调整)", C.LY))
-    else:
-        _has_details = _sent_col >= 0 and _recv_col >= 0 and _loss_col >= 0
-        if _has_details:
-            _cfst_hdr = ("  " + _pad_cjk("IP 地址", 20, '<') + "  " + _pad_cjk("已发送", 6, '>') +
-                         "  " + _pad_cjk("已接收", 6, '>') + "  " + _pad_cjk("丢包率", 8, '>') +
-                         "  " + _pad_cjk("延迟(ms)", 8, '>') + "  " + _pad_cjk("下载速度(MB/s)", 14, '>') +
-                         "  " + _pad_cjk("机房", 6, '>'))
-        else:
-            _cfst_hdr = ("  " + _pad_cjk("IP 地址", 20, '<') + "  " + _pad_cjk("延迟(ms)", 8, '>') +
-                         "  " + _pad_cjk("下载速度(MB/s)", 14, '>') + "  " + _pad_cjk("机房", 6, '>'))
-        print(c(_cfst_hdr, C.W))
-        for _i, (_s, _bw, _rw) in enumerate(_scored):
-            _ip = _rw[_ip_col].strip()
-            _lat = float(_rw[_lat_col])
-            _colo = _rtt_map[_ip].colo if _ip in _rtt_map and hasattr(_rtt_map[_ip], 'colo') else ""
-            if _i == 0:
-                _color = C.LG
-            elif _i < 3:
-                _color = C.LY
+                        if "｜精品" in _route_display:
+                            _color = C.LG
+                        elif "｜优化" in _route_display:
+                            _color = C.LY
             else:
                 _color = C.W
             if _has_details:
@@ -2376,7 +1794,7 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
     premium_cidrs: set[str] = set()
     optimize_cidrs: set[str] = set()
     for ip, route in route_map.items():
-        if "精品" in route:
+        if "｜精品" in route:
             try:
                 net = ipaddress.IPv4Network(f"{ip}/24", strict=False)
                 premium_cidrs.add(str(net))
@@ -2396,7 +1814,7 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
     if route_stats:
         print("  路由分布:  ", end="")
         for label, cnt in sorted(route_stats.items(), key=lambda x: -x[1])[:6]:
-            color = C.LG if "精品" in label else (C.LY if "优化" in label else C.W)
+            color = C.LG if "｜精品" in label else (C.LY if "｜优化" in label else C.W)
             print(c(f"{label}({cnt})", color), end="  ")
         print()
 
@@ -2490,7 +1908,7 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
                         route_label = cidr_label_map.get(c_net, "待检测")
                     except Exception:
                         route_label = "待检测"
-                _r_color = C.LG if "精品" in route_label else (C.LY if "优化" in route_label else C.W)
+                _r_color = C.LG if "｜精品" in route_label else (C.LY if "｜优化" in route_label else C.W)
                 prefix = ""
                 try:
                     n = ipaddress.IPv4Network(f"{ip}/24", strict=False)
@@ -2600,8 +2018,8 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
             display_rows = _trace_routes_concurrent(display_rows)
             def _route_sort_key(r):
                 _route = r[5] if len(r) > 5 and r[5] else ""
-                if "精品" in _route: return (0,)
-                if "优化" in _route: return (1,)
+                if "｜精品" in _route: return (0,)
+                if "｜优化" in _route: return (1,)
                 if not _route: return (3,)
                 return (2,)
             display_rows.sort(key=lambda r: (_route_sort_key(r), r[2] == "", float(r[1]) if r[1] else 99999))
@@ -2624,9 +2042,9 @@ def step_montecarlo(cfg: ScannerConfig, auto_mcis: bool = False, colo: str = "",
             else:
                 _color = C.W
             _route_display = _route or "-"
-            if "精品" in _route_display:
+            if "｜精品" in _route_display:
                 _r_color = C.LG
-            elif "优化" in _route_display:
+            elif "｜优化" in _route_display:
                 _r_color = C.LY
             else:
                 _r_color = C.W
@@ -2750,7 +2168,7 @@ def main() -> None:
 
     print_hardware_info(cfg.cpu, cfg.ram_mb, cfg.masscan_rate,
                         cfg.cf_concurrency, cfg.api_concurrency,
-                        cfg.global_city, cfg.global_isp)
+                        cfg.global_loc, cfg.global_isp)
 
     targets_desc = []
     if asns:
