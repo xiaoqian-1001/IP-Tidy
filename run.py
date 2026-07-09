@@ -786,16 +786,29 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
             if _fp.is_file() and _fp.stat().st_size > 1000:
                 _dl_ok += 1
             else:
-                try:
-                    import urllib.request
-                    req = urllib.request.Request(_url, headers={"User-Agent": "ip-tidy/2.0"})
-                    with urllib.request.urlopen(req, timeout=120) as resp:
-                        with open(_fp, "wb") as f:
-                            f.write(resp.read())
-                    _dl_ok += 1
-                    print(c(f"    [OK] {_name}", C.G))
-                except Exception as _e:
-                    print(c(f"    [FAIL] {_name}: {_e}", C.LR))
+                _ok = False
+                for _attempt in range(3):
+                    try:
+                        import urllib.request
+                        req = urllib.request.Request(_url, headers={"User-Agent": "ip-tidy/2.0"})
+                        with urllib.request.urlopen(req, timeout=120) as resp:
+                            _tmp = _fp.with_suffix(".mmdb.tmp")
+                            with open(_tmp, "wb") as f:
+                                f.write(resp.read())
+                        if _tmp.stat().st_size > 1000:
+                            _tmp.rename(_fp)
+                            _ok = True
+                            _dl_ok += 1
+                            print(c(f"    [OK] {_name}", C.G))
+                            break
+                    except Exception as _e:
+                        _tmp = _fp.with_suffix(".mmdb.tmp")
+                        if _tmp.exists():
+                            _tmp.unlink(missing_ok=True)
+                        if _attempt < 2:
+                            time.sleep(2)
+                        else:
+                            print(c(f"    [FAIL] {_name}: {_e}", C.LR))
         if _dl_ok == 3:
             print(c("  数据库下载完成，重新加载...", C.CY))
         try:
