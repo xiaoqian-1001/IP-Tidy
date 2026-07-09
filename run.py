@@ -940,7 +940,7 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
                             for _i, _row in enumerate(_display_rows[:20]):
                                 _ip, _lat, _spd, _prefix, _colo, _ = _row
                                 _c = C.LG if _i == 0 else (C.LY if _i < 3 else C.W)
-                                print(_c(f"  {_pad_cjk(_ip, 18, '<')}  {_pad_cjk(_lat, 8, '>')}  {_pad_cjk(_spd, 14, '>')}  {_pad_cjk(_colo, 8, '<')}  {_pad_cjk(_prefix, 16, '<')}"))
+                                print(c(f"  {_pad_cjk(_ip, 18, '<')}  {_pad_cjk(_lat, 8, '>')}  {_pad_cjk(_spd, 14, '>')}  {_pad_cjk(_colo, 8, '<')}  {_pad_cjk(_prefix, 16, '<')}", _c))
                             if len(_display_rows) > 20:
                                 print(c(f"  ... 共 {len(_display_rows)} 条，详见 verified.txt", C.LY))
                             if _dl_map:
