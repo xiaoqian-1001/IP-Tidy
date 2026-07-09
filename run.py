@@ -693,7 +693,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
     do_mcis = a.mcis
     if not do_speed and not do_deep and not do_mcis:
         print_sep("-", C.B)
-        ch = _safe_input("  快捷功能（1.MCIS搜索 | 2.路由追踪 | 3.本地IP | 回车跳过）：", to_lower=True)
+        ch = _safe_input("  快捷功能（1.MCIS搜索 | 2.路由追踪 | 3.IP查询 | 回车跳过）：", to_lower=True)
         if ch == "1":
             a.mcis_only = True
             do_mcis = True
@@ -810,7 +810,7 @@ def _ensure_geolite2_files() -> bool:
 
 
 def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
-    print_step("本地IP查询")
+    print_step("IP查询")
     all_cidrs = list(v4_cidrs)
     if asns:
         print(c("  正在解析 ASN...", C.CY))
