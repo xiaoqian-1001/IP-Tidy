@@ -915,39 +915,48 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         rows.append((cidr, _dc, _country, _city, _asn_org, prefix))
     rows.sort(key=lambda r: r[5])
 
-    hdr = ("  " + _pad_cjk("网段", 20, '<') + "  " + _pad_cjk("机房", 14, '<') +
-           "  " + _pad_cjk("地区", 12, '<') + "  " + _pad_cjk("城市", 16, '<') +
-           "  " + _pad_cjk("ASN组织", 30, '<'))
-    print(c(hdr, C.W))
-    for i, (cidr, dc, country, city, asn_org, prefix) in enumerate(rows):
-        if i >= 10:
-            print(c(f"  ... 共 {len(rows)} 段，仅展示前 10 条", C.LY))
-            break
-        print("  " + _pad_cjk(cidr, 20, '<') + "  " + _pad_cjk(dc, 14, '<') +
-              "  " + _pad_cjk(country, 12, '<') + "  " + _pad_cjk(city, 16, '<') +
-              "  " + _pad_cjk(asn_org, 30, '<'))
-
     country_counts: dict[str, int] = {}
     for _, dc, country, city, _, _ in rows:
         k = country if country else "N/A"
         country_counts[k] = country_counts.get(k, 0) + 1
     regions_list = sorted(country_counts.items(), key=lambda x: -x[1])
+    _priority = {"香港", "新加坡", "日本", "韩国", "台湾"}
+    _shown = [(k, cnt) for k, cnt in regions_list if k in _priority]
+    for k, cnt in regions_list:
+        if k not in _priority:
+            _shown.append((k, cnt))
+    _hidden = _shown[10:]
+    _shown = _shown[:10]
     print()
     print(c("  地区分布", C.LC))
-    for idx, (k, cnt) in enumerate(regions_list, 1):
+    for idx, (k, cnt) in enumerate(_shown, 1):
         n = c(f"  {idx}. {k}", C.W)
         print(f"    {n}    {cnt} 段")
+    if _hidden:
+        print(c(f"    ... 还有 {len(_hidden)} 个地区未显示", C.LY))
     print()
-    ch = _safe_input(f"  提取地区 CIDR 进行 MCIS 搜索（1-{len(regions_list)} | 回车跳过）：")
+    _max = len(_shown)
+    _prompt = f"  选择地区进行 MCIS 搜索（1-{_max}" + (" | 展开全部" if _hidden else "") + " | 回车跳过）："
+    ch = _safe_input(_prompt)
     if ch.strip():
-        try:
-            idx = int(ch.strip())
-            if idx < 1 or idx > len(regions_list):
-                raise ValueError
-            target = regions_list[idx - 1][0]
-        except ValueError:
-            print(c("  无效输入", C.LR))
-            sys.exit(0)
+        _all = _shown + _hidden
+        if ch.strip() in ("e", "E", "展开", "展开全部"):
+            print()
+            print(c("  全部地区分布", C.LC))
+            for idx, (k, cnt) in enumerate(_all, 1):
+                n = c(f"  {idx}. {k}", C.W)
+                print(f"    {n}    {cnt} 段")
+            print()
+            ch = _safe_input(f"  选择地区进行 MCIS 搜索（1-{len(_all)} | 回车跳过）：")
+        if ch.strip():
+            try:
+                idx = int(ch.strip())
+                if idx < 1 or idx > len(_all):
+                    raise ValueError
+                target = _all[idx - 1][0]
+            except ValueError:
+                print(c("  无效输入", C.LR))
+                sys.exit(0)
         _mcis_cidrs = [cidr for cidr, _, country, _, _, _ in rows if target in country]
         if not _mcis_cidrs:
             sys.exit(0)
