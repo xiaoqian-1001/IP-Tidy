@@ -28,7 +28,7 @@ WIDE_PORTS = "912,22,80,443,8080,8443,2053,2083,2087,2096,10000-65535"
 MASSCAN_BIN = shutil.which("masscan") or "/usr/local/bin/masscan"
 MASSCAN_BATCH = 5000
 
-CSV_HEADER = "IP地址,端口,TLS,数据中心,地区,城市,网络延迟,下载速度,ASN,协议"
+CSV_HEADER = "IP地址,端口,TLS,机房,地区,城市,网络延迟(ms),下载速度(MB/s),ASN,协议"
 
 _SPEED_TESTS = [
     ("speed.cloudflare.com", "https://speed.cloudflare.com/__down?bytes=1048576",   1,   "1MB"),

@@ -8,7 +8,7 @@
 
 <h1 align="center">IP-Tidy</h1>
 <p align="center"><b>LITTLE MONEY ASN NSD TOOL</b></p>
-<p align="center">ASN / CIDR &rarr; Masscan &rarr; TLS &rarr; CF Node CSV</p>
+<p align="center">ASN / CIDR &rarr; Masscan &rarr; CF Detection &rarr; CSV</p>
 
 ---
 
@@ -24,7 +24,7 @@
 |------|------|
 | 智能子网分级 | 大 CIDR 自动拆 /24 抽样探活，仅扫活跃子段 (`--smart`) |
 | 深度挖掘 | 通过 IP 提取 /16 CIDR 二次全流程扫描，自动扩充IP |
-| 蒙特卡洛搜索 | 通过 Monte Carlo 算法在 CIDR 网段中搜索最优 IP，自动追踪线路 (`--mcis`) |
+| MCIS 搜索 | 通过 Monte Carlo 算法在 CIDR 网段中搜索最优 IP，自动追踪线路 (`--mcis`) |
 | 离线 GeoIP | 内置 MaxMind GeoLite2，无需网络查 ISP / 地区 / ASN |
 | 多输入源 | ASN 编号 / CIDR 网段 / 混合输入，任意组合 |
 | 深度扫描 | 二阶段宽端口扫描，发现隐藏高位端口 |
@@ -69,7 +69,7 @@ qian AS209242,1.2.3.0/24         # ASN + CIDR 混合输入
 -d             # 深度扫描 (命中 IP 追加宽端口)
 -s             # 扫描后自动测速
 -c             # CloudflareSpeedTest 测速优选工具 (可配合 --cfst-count)
---mcis         # Monte Carlo 搜索探测: 基于IP来源CIDR网段搜索最优节点
+--mcis         # MCIS 搜索: 基于IP来源CIDR网段搜索最优节点
                # 快捷模式: qian mcis <ASN/CIDR> 跳过扫描直接运行
 -i             # 增量扫描 (仅扫新增 CIDR，合并历史结果)
 -r 4000        # 指定发包速率
@@ -83,7 +83,7 @@ qian AS209242,1.2.3.0/24         # ASN + CIDR 混合输入
 ```bash
 qian AS209242 -w -d -s -i         # 组合使用
 qian AS209242 -c --cfst-count 20  # 扫描后自动 cfst 测速取前 20
-qian AS209242 --mcis              # 蒙特卡洛搜索最优节点
+qian AS209242 --mcis              # MCIS 搜索最优节点
 qian mcis AS209242                # 快捷模式: 跳过扫描直接 MCIS 搜索
 qian AS209242 --skip-masscan      # 断点续扫
 qian update                       # 更新到最新版
@@ -137,11 +137,11 @@ graph LR
     A["ASN / CIDR"] --> B["RIPEStat API + 缓存<br/>IPv4 前缀解析"]
     B --> C["子网分级探活<br/>大段拆 /24 抽样"]
     C --> D["masscan<br/>IPv4 CIDR SYN 扫描"]
-    D --> E["cf-scanner + API<br/>TLS 检测 + 精筛"]
-    E --> F["IP 深度挖掘<br/>IP -> /16 CIDR 二次扫描"]
-    F --> G["MCIS 搜索 (可选)<br/>Monte Carlo 最优IP探测"]
-    G --> H["深度扫描 (可选)<br/>命中 IP 追加宽端口"]
-    H --> I["延迟/带宽检测<br/>TCP + HTTP + 下载测速"]
+    D --> E["cf-scanner + API<br/>CF检测 + 精筛"]
+    E --> F["CIDR深度挖掘<br/>IP -> /16 CIDR 二次扫描"]
+    F --> G["MCIS 搜索 (可选)"]
+    G --> H["宽端口扫描 (可选)<br/>命中 IP 追加宽端口"]
+    H --> I["测速 (可选)<br/>TCP + HTTP + 下载测速"]
     I --> J["CSV 输出 + HTTP 下载"]
 ```
 
@@ -150,10 +150,10 @@ graph LR
 | 1 | 通过 ASN 提取 CIDR 网段 | RIPEStat API 拉取 IPv4 前缀（7天缓存），CIDR 直通 |
 | 2 | 子网分级探活 | 大 CIDR 拆 /24 抽样探活，仅保留活跃子网 (`--smart`) |
 | 3 | 基于 Masscan 执行端口扫描任务 | 自适应速率 SYN 扫描，XML 解析，仅保留 syn-ack |
-| 4 | Cloudflare IP 检测与 API 精准过滤 | Go cf-scanner TLS 握手检测 + API 二次验证 |
-| 5 | IP 深度挖掘探测 | 通过 IP 提取 /16 CIDR 二次全流程扫描 |
-| 6 | MCIS 蒙特卡洛搜索 (可选) | 通过 Monte Carlo 算法在 CIDR 网段中搜索最优 IP (`--mcis`) |
-| 7 | 深度扫描 | 对命中 IP 追加宽端口，两阶段产出最大化 |
+| 4 | Cloudflare IP 检测与 API 精准过滤 | Go cf-scanner CF检测 + API 二次验证 |
+| 5 | CIDR深度挖掘 | 通过 IP 提取 /16 CIDR 二次全流程扫描 |
+| 6 | MCIS 搜索 (可选) | 通过 Monte Carlo 算法在 CIDR 网段中搜索最优 IP (`--mcis`) |
+| 7 | 宽端口扫描 | 对命中 IP 追加宽端口，两阶段产出最大化 |
 | 8 | 网络延迟/带宽速率检测 | TCP + HTTP 延迟 + 多 URL 下载测速 |
 | 9 | 输出 | 生成 CSV（含 IP位置 / ASN组织），启动 HTTP 下载服务 |
 
@@ -195,7 +195,7 @@ qian AS209242
 
 ---
 
-## MCIS 蒙特卡洛搜索 (`--mcis` / `qian mcis`)
+## MCIS 搜索 (`--mcis` / `qian mcis`)
 
 扫描完成后根据已通过 IP 提取 CIDR 网段，使用 Monte Carlo IP Searcher 在网段内搜索最优节点，自动替换原结果。结果自动附带 NextTrace 路由线路分析。
 
@@ -379,7 +379,7 @@ masscan 需要 `CAP_NET_RAW`。以下环境不可用：
 
 ### v2.7.0
 
-- [新增] MCIS 蒙特卡洛搜索：基于已通过 IP 扩展 CIDR 网段，搜索最优节点 (`--mcis`)，替代传统测速步骤
+- [新增] MCIS 搜索：基于已通过 IP 扩展 CIDR 网段，搜索最优节点 (`--mcis`)，替代传统测速步骤
 - [新增] 下载测速过滤：MCIS 结果仅保留 `ok=true` 的 IP（TLS/下载验证通过），自动剔除无效节点
 - [新增] 结果表增强：MCIS 和 CFST 均展示"地区码"列，MCIS 额外展示"所属网段"列
 - [优化] MCIS 自动下载二进制，无需手动安装

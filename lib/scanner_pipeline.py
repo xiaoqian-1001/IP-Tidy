@@ -200,7 +200,7 @@ def run_cf_scanner(input_file: Path, output_file: Path,
                 last_done = done
                 if progress_callback:
                     progress_callback("scan_progress", {
-                        "current": done, "total": tot, "stage": "cf-scanner TLS检测",
+                        "current": done, "total": tot, "stage": "CF检测",
                     })
 
     try:
