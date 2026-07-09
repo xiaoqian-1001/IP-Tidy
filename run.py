@@ -660,19 +660,39 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
 
     _COUNTRY_CN = {
         "US": "美国", "HK": "香港", "JP": "日本", "SG": "新加坡",
-    "KR": "韩国", "TW": "台湾", "CN": "中国", "GB": "英国",
-    "DE": "德国", "FR": "法国", "NL": "荷兰", "IT": "意大利",
-    "ES": "西班牙", "CA": "加拿大", "AU": "澳大利亚", "BR": "巴西",
-    "IN": "印度", "RU": "俄罗斯", "ZA": "南非", "AE": "阿联酋",
-    "TH": "泰国", "VN": "越南", "MY": "马来西亚", "PH": "菲律宾",
-    "ID": "印尼", "SE": "瑞典", "CH": "瑞士", "IE": "爱尔兰",
-    "IL": "以色列", "TR": "土耳其", "PL": "波兰", "UA": "乌克兰",
-    "RO": "罗马尼亚", "CZ": "捷克", "HU": "匈牙利", "GR": "希腊",
-    "NO": "挪威", "DK": "丹麦", "FI": "芬兰", "PT": "葡萄牙",
-    "AT": "奥地利", "BE": "比利时", "BG": "保加利亚", "HR": "克罗地亚",
-    "LT": "立陶宛", "LV": "拉脱维亚", "EE": "爱沙尼亚", "SK": "斯洛伐克",
-    "SI": "斯洛文尼亚", "RS": "塞尔维亚", "MK": "北马其顿",
-}
+        "KR": "韩国", "TW": "台湾", "CN": "中国", "GB": "英国",
+        "DE": "德国", "FR": "法国", "NL": "荷兰", "IT": "意大利",
+        "ES": "西班牙", "CA": "加拿大", "AU": "澳大利亚", "BR": "巴西",
+        "IN": "印度", "RU": "俄罗斯", "ZA": "南非", "AE": "阿联酋",
+        "TH": "泰国", "VN": "越南", "MY": "马来西亚", "PH": "菲律宾",
+        "ID": "印尼", "SE": "瑞典", "CH": "瑞士", "IE": "爱尔兰",
+        "IL": "以色列", "TR": "土耳其", "PL": "波兰", "UA": "乌克兰",
+        "RO": "罗马尼亚", "CZ": "捷克", "HU": "匈牙利", "GR": "希腊",
+        "NO": "挪威", "DK": "丹麦", "FI": "芬兰", "PT": "葡萄牙",
+        "AT": "奥地利", "BE": "比利时", "BG": "保加利亚", "HR": "克罗地亚",
+        "LT": "立陶宛", "LV": "拉脱维亚", "EE": "爱沙尼亚", "SK": "斯洛伐克",
+        "SI": "斯洛文尼亚", "RS": "塞尔维亚", "MK": "北马其顿",
+        "United Arab Emirates": "阿联酋",
+        "Italy": "意大利", "Netherlands": "荷兰",
+        "United States": "美国", "United Kingdom": "英国",
+        "Germany": "德国", "France": "法国",
+        "Japan": "日本", "Singapore": "新加坡",
+        "South Korea": "韩国", "Taiwan": "台湾",
+        "Brazil": "巴西", "Russia": "俄罗斯",
+        "India": "印度", "South Africa": "南非",
+        "Thailand": "泰国", "Vietnam": "越南",
+        "Malaysia": "马来西亚", "Philippines": "菲律宾",
+        "Indonesia": "印尼", "Sweden": "瑞典",
+        "Switzerland": "瑞士", "Ireland": "爱尔兰",
+        "Israel": "以色列", "Turkey": "土耳其",
+        "Poland": "波兰", "Ukraine": "乌克兰",
+        "Romania": "罗马尼亚", "Czech Republic": "捷克",
+        "Greece": "希腊", "Norway": "挪威",
+        "Denmark": "丹麦", "Finland": "芬兰",
+        "Portugal": "葡萄牙", "Austria": "奥地利",
+        "Belgium": "比利时", "Bulgaria": "保加利亚",
+        "Croatia": "克罗地亚", "Estonia": "爱沙尼亚",
+    }
     rows: list[tuple[str, str, str]] = []
     _api_cache: dict[str, str] = {}
     for cidr in sorted(all_cidrs):
@@ -698,12 +718,14 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
             else:
                 try:
                     req = urllib.request.Request(
-                        f"http://ip-api.com/json/{samples[0]}?fields=countryCode,city&lang=zh-CN",
+                        f"http://ip-api.com/json/{samples[0]}?fields=countryCode,country,city&lang=zh-CN",
                         headers={"User-Agent": "ip-tidy/2.0"},
                     )
                     with urllib.request.urlopen(req, timeout=5) as resp:
                         _data = json.loads(resp.read().decode("utf-8"))
-                    _cc = _COUNTRY_CN.get(_data.get("countryCode", "").upper(), _data.get("countryCode", ""))
+                    _cc = _COUNTRY_CN.get(_data.get("countryCode", "").upper())
+                    if not _cc:
+                        _cc = _COUNTRY_CN.get(_data.get("country", ""), _data.get("country", ""))
                     _city = _data.get("city", "")
                     _label = f"{_cc}-{_city}" if _city else _cc
                     if _label:
