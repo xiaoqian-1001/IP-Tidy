@@ -658,8 +658,44 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         return
     print(c(f"  CIDR 数量: {len(all_cidrs)} 段", C.G))
     if not geo_available():
-        print(c("  [WARN] MaxMind 数据库未加载，将使用在线查询", C.LY))
-    else:
+        print(c("  MaxMind 数据库缺失，尝试自动下载...", C.CY))
+        _mmdb_dir = Path.home() / ".config" / "ip-tidy"
+        _mmdb_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            import maxminddb
+        except ImportError:
+            print(c("  安装 maxminddb 库...", C.CY))
+            import subprocess
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--break-system-packages", "maxminddb"],
+                capture_output=True, timeout=60,
+            )
+            try:
+                import maxminddb
+            except ImportError:
+                print(c("  [FAIL] maxminddb 安装失败", C.LR))
+        _dl_ok = 0
+        for _name, _url in [
+            ("GeoLite2-Country.mmdb", "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb"),
+            ("GeoLite2-City.mmdb", "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-City.mmdb"),
+            ("GeoLite2-ASN.mmdb", "https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-ASN.mmdb"),
+        ]:
+            _fp = _mmdb_dir / _name
+            if _fp.is_file() and _fp.stat().st_size > 1000:
+                _dl_ok += 1
+            else:
+                try:
+                    import urllib.request
+                    req = urllib.request.Request(_url, headers={"User-Agent": "ip-tidy/2.0"})
+                    with urllib.request.urlopen(req, timeout=120) as resp:
+                        with open(_fp, "wb") as f:
+                            f.write(resp.read())
+                    _dl_ok += 1
+                    print(c(f"    [OK] {_name}", C.G))
+                except Exception as _e:
+                    print(c(f"    [FAIL] {_name}: {_e}", C.LR))
+        if _dl_ok == 3:
+            print(c("  数据库下载完成，重新加载...", C.CY))
         try:
             from lib.geoip import _init as _geo_reinit
             _geo_reinit()
