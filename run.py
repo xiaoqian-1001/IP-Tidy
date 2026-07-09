@@ -658,7 +658,21 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         return
     print(c(f"  CIDR 数量: {len(all_cidrs)} 段", C.G))
 
-    rows: list[tuple[str, str, str]] = []
+    _COUNTRY_CN = {
+    "US": "美国", "HK": "香港", "JP": "日本", "SG": "新加坡",
+    "KR": "韩国", "TW": "台湾", "CN": "中国", "GB": "英国",
+    "DE": "德国", "FR": "法国", "NL": "荷兰", "IT": "意大利",
+    "ES": "西班牙", "CA": "加拿大", "AU": "澳大利亚", "BR": "巴西",
+    "IN": "印度", "RU": "俄罗斯", "ZA": "南非", "AE": "阿联酋",
+    "TH": "泰国", "VN": "越南", "MY": "马来西亚", "PH": "菲律宾",
+    "ID": "印尼", "SE": "瑞典", "CH": "瑞士", "IE": "爱尔兰",
+    "IL": "以色列", "TR": "土耳其", "PL": "波兰", "UA": "乌克兰",
+    "RO": "罗马尼亚", "CZ": "捷克", "HU": "匈牙利", "GR": "希腊",
+    "NO": "挪威", "DK": "丹麦", "FI": "芬兰", "PT": "葡萄牙",
+    "AT": "奥地利", "BE": "比利时", "BG": "保加利亚", "HR": "克罗地亚",
+    "LT": "立陶宛", "LV": "拉脱维亚", "EE": "爱沙尼亚", "SK": "斯洛伐克",
+    "SI": "斯洛文尼亚", "RS": "塞尔维亚", "MK": "北马其顿",
+}
     _api_cache: dict[str, str] = {}
     for cidr in sorted(all_cidrs):
         try:
@@ -671,8 +685,8 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
             gi = geo_lookup(ip)
             if gi:
                 cc = gi.get("country", "")
-                city = gi.get("city", "")
-                regions.add(f"{cc}-{city}" if city else cc)
+                cc_cn = _COUNTRY_CN.get(cc.upper(), cc)
+                regions.add(cc_cn)
         if not regions:
             try:
                 ck = str(ipaddress.IPv4Network(f"{samples[0]}/24", strict=False))
@@ -683,12 +697,12 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
             else:
                 try:
                     req = urllib.request.Request(
-                        f"http://ip-api.com/json/{samples[0]}?fields=countryCode,city",
+                        f"http://ip-api.com/json/{samples[0]}?fields=country,city&lang=zh-CN",
                         headers={"User-Agent": "ip-tidy/2.0"},
                     )
                     with urllib.request.urlopen(req, timeout=5) as resp:
                         _data = json.loads(resp.read().decode("utf-8"))
-                    _cc = _data.get("countryCode", "")
+                    _cc = _data.get("country", "")
                     _city = _data.get("city", "")
                     _label = f"{_cc}-{_city}" if _city else _cc
                     if _label:
