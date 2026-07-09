@@ -659,7 +659,7 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
     print(c(f"  CIDR 数量: {len(all_cidrs)} 段", C.G))
 
     _COUNTRY_CN = {
-    "US": "美国", "HK": "香港", "JP": "日本", "SG": "新加坡",
+        "US": "美国", "HK": "香港", "JP": "日本", "SG": "新加坡",
     "KR": "韩国", "TW": "台湾", "CN": "中国", "GB": "英国",
     "DE": "德国", "FR": "法国", "NL": "荷兰", "IT": "意大利",
     "ES": "西班牙", "CA": "加拿大", "AU": "澳大利亚", "BR": "巴西",
@@ -673,6 +673,7 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
     "LT": "立陶宛", "LV": "拉脱维亚", "EE": "爱沙尼亚", "SK": "斯洛伐克",
     "SI": "斯洛文尼亚", "RS": "塞尔维亚", "MK": "北马其顿",
 }
+    rows: list[tuple[str, str, str]] = []
     _api_cache: dict[str, str] = {}
     for cidr in sorted(all_cidrs):
         try:
