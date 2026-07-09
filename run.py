@@ -591,7 +591,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
     do_deep = a.deep
     do_mcis = a.mcis
     if not do_speed and not do_deep and not do_mcis:
-        ch = _safe_input("  快捷功能（1.MCIS快捷搜索 | 2.IP路由追踪 | 回车跳过）：", to_lower=True)
+        ch = _safe_input("  快捷功能（1.MCIS快捷搜索 | 2.IP路由追踪 | 3.Local-IP查询 | 回车跳过）：", to_lower=True)
         if ch == "1":
             a.mcis_only = True
             do_mcis = True
@@ -603,6 +603,12 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
             do_deep = False
             do_mcis = False
             print(c("  [已启用] IP 路由追踪探测", C.G))
+            return do_speed, do_deep, do_mcis
+        if ch == "3":
+            _local_ip_query(asns, v4_cidrs)
+            do_speed = False
+            do_deep = False
+            do_mcis = False
             return do_speed, do_deep, do_mcis
     if not do_speed:
         ts = _safe_input("  是否启用全量测速？（Y 确认 | 回车跳过）：", to_lower=True)
@@ -638,6 +644,59 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
                 print(c("  [已跳过] 增量扫描 (回车自动选择)", C.LY))
 
     return do_speed, do_deep, do_mcis
+
+
+def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
+    all_cidrs = list(v4_cidrs)
+    if asns:
+        print(c("  正在解析 ASN...", C.CY))
+        all_cidrs.extend(c for c in resolve_asn_cidrs(asns, list(v4_cidrs)) if ":" not in c)
+    all_cidrs = list(dict.fromkeys(all_cidrs))
+    if not all_cidrs:
+        print(c("  [FAIL] 无可用 CIDR", C.LR))
+        return
+    print(c(f"  CIDR 数量: {len(all_cidrs)} 段", C.G))
+
+    rows: list[tuple[str, str, str]] = []
+    for cidr in sorted(all_cidrs):
+        try:
+            net = ipaddress.ip_network(cidr, strict=False)
+        except Exception:
+            continue
+        samples = sample_ips(cidr, 5)
+        regions: set[str] = set()
+        for ip in samples:
+            gi = geo_lookup(ip)
+            if gi:
+                cc = gi.get("country", "")
+                city = gi.get("city", "")
+                regions.add(f"{cc}-{city}" if city else cc)
+            else:
+                regions.add("N/A")
+        region_str = "、".join(sorted(regions)) if regions else "N/A"
+        rows.append((cidr, region_str, f"/{net.prefixlen}"))
+    rows.sort(key=lambda r: r[2])
+
+    print_sep("-", C.B)
+    print(c("  Local-IP 查询结果", C.LC))
+    hdr = ("  " + _pad_cjk("网段", 20, '<') + "  " + _pad_cjk("前缀", 8, '<') +
+           "  " + _pad_cjk("地区", 24, '<'))
+    print(c(hdr, C.W))
+    for cidr, region, prefix in rows:
+        print("  " + _pad_cjk(cidr, 20, '<') + "  " + _pad_cjk(prefix, 8, '<') +
+              "  " + _pad_cjk(region, 24, '<'))
+
+    region_counts: dict[str, int] = {}
+    for _, region, _ in rows:
+        for r in region.split("、"):
+            r = r.strip()
+            if r and r != "N/A":
+                region_counts[r] = region_counts.get(r, 0) + 1
+    if region_counts:
+        print("\n  地区分布:", end="")
+        for region, cnt in sorted(region_counts.items(), key=lambda x: -x[1])[:10]:
+            print(c(f"  {region}({cnt})", C.LG if cnt > 1 else C.W), end="")
+        print()
 
 
 def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
