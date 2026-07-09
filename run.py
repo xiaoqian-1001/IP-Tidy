@@ -692,6 +692,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
     do_deep = a.deep
     do_mcis = a.mcis
     if not do_speed and not do_deep and not do_mcis:
+        print_sep("-", C.B)
         ch = _safe_input("  快捷功能（1.MCIS快捷搜索 | 2.IP路由追踪 | 3.Local-IP查询 | 回车跳过）：", to_lower=True)
         if ch == "1":
             a.mcis_only = True
@@ -748,6 +749,7 @@ def _interactive_choices(a, v4_cidrs: list[str], asns: list[str]) -> tuple[bool,
 
 
 def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
+    print_step("Local-IP 查询")
     all_cidrs = list(v4_cidrs)
     if asns:
         print(c("  正在解析 ASN...", C.CY))
@@ -894,8 +896,6 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         rows.append((cidr, _dc, _country, _city, _asn_org, prefix))
     rows.sort(key=lambda r: r[5])
 
-    print_sep("-", C.B)
-    print(c("  Local-IP 查询结果", C.LC))
     hdr = ("  " + _pad_cjk("网段", 20, '<') + "  " + _pad_cjk("数据中心", 14, '<') +
            "  " + _pad_cjk("地区", 12, '<') + "  " + _pad_cjk("城市", 16, '<') +
            "  " + _pad_cjk("ASN组织", 30, '<'))
