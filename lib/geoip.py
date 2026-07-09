@@ -8,7 +8,6 @@ import gzip
 import time
 import io
 import shutil
-import socket
 import ipaddress
 import urllib.request
 import urllib.error
@@ -16,10 +15,12 @@ from pathlib import Path
 from typing import Optional, Callable
 
 _MAXMIND_ENABLED = False
+_MAXMIND_COUNTRY: Optional[Callable] = None
 _MAXMIND_CITY: Optional[Callable] = None
 _MAXMIND_ASN: Optional[Callable] = None
 
 _GEO_DIR = Path.home() / ".config" / "ip-tidy"
+_COUNTRY_DB = _GEO_DIR / "GeoLite2-Country.mmdb"
 _CITY_DB = _GEO_DIR / "GeoLite2-City.mmdb"
 _ASN_DB = _GEO_DIR / "GeoLite2-ASN.mmdb"
 _KEY_FILE = _GEO_DIR / "maxmind_key"
@@ -31,17 +32,19 @@ _ASN_URL = f"{_MAXMIND_DOWNLOAD}?edition_id=GeoLite2-ASN&license_key={{}}&suffix
 
 def _init() -> None:
     """加载 maxminddb 模块和数据库文件"""
-    global _MAXMIND_ENABLED, _MAXMIND_CITY, _MAXMIND_ASN
+    global _MAXMIND_ENABLED, _MAXMIND_COUNTRY, _MAXMIND_CITY, _MAXMIND_ASN
     if _MAXMIND_ENABLED:
         return
     _GEO_DIR.mkdir(parents=True, exist_ok=True)
     try:
         import maxminddb
+        if _COUNTRY_DB.is_file():
+            _MAXMIND_COUNTRY = maxminddb.open_database(str(_COUNTRY_DB))
         if _CITY_DB.is_file():
             _MAXMIND_CITY = maxminddb.open_database(str(_CITY_DB))
         if _ASN_DB.is_file():
             _MAXMIND_ASN = maxminddb.open_database(str(_ASN_DB))
-        _MAXMIND_ENABLED = bool(_MAXMIND_CITY or _MAXMIND_ASN)
+        _MAXMIND_ENABLED = bool(_MAXMIND_COUNTRY or _MAXMIND_CITY or _MAXMIND_ASN)
     except ImportError:
         pass
 
@@ -54,27 +57,41 @@ def lookup(ip: str) -> dict:
 
     result: dict = {}
     try:
-        ip_bytes = socket.inet_pton(socket.AF_INET, ip)
-    except OSError:
+        ip_addr = ipaddress.IPv4Address(ip)
+    except (ipaddress.AddressValueError, TypeError):
         try:
-            ip_bytes = socket.inet_pton(socket.AF_INET6, ip)
-        except OSError:
+            ip_addr = ipaddress.IPv6Address(ip)
+        except (ipaddress.AddressValueError, TypeError):
             return {}
+
+    if _MAXMIND_COUNTRY:
+        try:
+            data = _MAXMIND_COUNTRY.get(ip_addr)
+            if data and data.get("country"):
+                result["country"] = data["country"].get("iso_code", "")
+                result["country_cn"] = data["country"].get("names", {}).get("zh-CN", "")
+                result["continent_cn"] = data.get("continent", {}).get("names", {}).get("zh-CN", "")
+        except (OSError, TypeError, KeyError):
+            pass
 
     if _MAXMIND_CITY:
         try:
-            data = _MAXMIND_CITY.get(ip_bytes)
+            data = _MAXMIND_CITY.get(ip_addr)
             if data:
-                result["country"] = (data.get("country") or {}).get("iso_code", "")
+                if data.get("country"):
+                    result["country"] = data["country"].get("iso_code", "")
+                    result["country_cn"] = data["country"].get("names", {}).get("zh-CN", "")
+                    result["continent_cn"] = data.get("continent", {}).get("names", {}).get("zh-CN", "")
                 subs = data.get("subdivisions", [])
                 result["region"] = subs[0].get("iso_code", "") if subs else ""
                 result["city"] = (data.get("city") or {}).get("names", {}).get("en", "")
+                result["city_cn"] = (data.get("city") or {}).get("names", {}).get("zh-CN", "")
         except (OSError, TypeError, KeyError):
             pass
 
     if _MAXMIND_ASN:
         try:
-            data = _MAXMIND_ASN.get(ip_bytes)
+            data = _MAXMIND_ASN.get(ip_addr)
             if data:
                 result["asn"] = f"AS{data.get('autonomous_system_number', '')}"
                 result["isp"] = data.get("autonomous_system_organization", "")

@@ -785,10 +785,10 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         regions: set[str] = set()
         for ip in samples:
             gi = geo_lookup(ip)
-            if gi:
-                cc = gi.get("country", "")
-                cc_cn = _COUNTRY_CN.get(cc.upper(), cc)
-                regions.add(cc_cn)
+            if gi and (gi.get("country_cn") or gi.get("city_cn")):
+                _cc = gi.get("country_cn", "") or gi.get("country", "")
+                _city = gi.get("city_cn", "")
+                regions.add(f"{_cc}-{_city}" if _city else _cc)
         if not regions:
             try:
                 ck = str(ipaddress.IPv4Network(f"{samples[0]}/24", strict=False))
