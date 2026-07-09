@@ -918,6 +918,18 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         rows.append((cidr, _dc, _country, _city, _asn_org, prefix))
     rows.sort(key=lambda r: r[5])
 
+    hdr = ("  " + _pad_cjk("网段", 20, '<') + "  " + _pad_cjk("机房", 14, '<') +
+           "  " + _pad_cjk("地区", 12, '<') + "  " + _pad_cjk("城市", 16, '<') +
+           "  " + _pad_cjk("ASN组织", 30, '<'))
+    print(c(hdr, C.W))
+    for i, (cidr, dc, country, city, asn_org, prefix) in enumerate(rows):
+        if i >= 10:
+            print(c(f"  ... 共 {len(rows)} 段，仅展示前 10 条", C.LY))
+            break
+        print("  " + _pad_cjk(cidr, 20, '<') + "  " + _pad_cjk(dc, 14, '<') +
+              "  " + _pad_cjk(country, 12, '<') + "  " + _pad_cjk(city, 16, '<') +
+              "  " + _pad_cjk(asn_org, 30, '<'))
+
     country_counts: dict[str, int] = {}
     for _, dc, country, city, _, _ in rows:
         k = country if country else "N/A"
