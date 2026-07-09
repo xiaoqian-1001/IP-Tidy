@@ -58,6 +58,106 @@ except OSError:
 
 _SUBNET_THRESHOLD = 20
 
+_CITY_CN = {
+    "Curitiba": "库里奇巴", "Guaratuba": "瓜拉图巴",
+    "Ji Paraná": "日帕拉纳", "Milan": "米兰",
+    "Frankfurt Am Main": "法兰克福", "Frankfurt": "法兰克福",
+    "London": "伦敦", "City of London": "伦敦",
+    "Manchester": "曼彻斯特",
+    "New York": "纽约", "New York City": "纽约",
+    "Los Angeles": "洛杉矶", "San Francisco": "旧金山",
+    "San Jose": "圣何塞", "San Diego": "圣地亚哥",
+    "Miami": "迈阿密", "Fort Lauderdale": "劳德代尔堡",
+    "Seattle": "西雅图", "Chicago": "芝加哥",
+    "Dallas": "达拉斯", "Houston": "休斯顿",
+    "Atlanta": "亚特兰大", "Denver": "丹佛",
+    "Phoenix": "凤凰城", "Boston": "波士顿",
+    "Philadelphia": "费城", "Portland": "波特兰",
+    "Washington": "华盛顿", "Washington, D.C.": "华盛顿",
+    "Tampa": "坦帕", "Orlando": "奥兰多",
+    "Las Vegas": "拉斯维加斯", "Nashville": "纳什维尔",
+    "Charlotte": "夏洛特", "Austin": "奥斯汀",
+    "Sao Paulo": "圣保罗", "Rio de Janeiro": "里约热内卢",
+    "Brasilia": "巴西利亚", "Colombo": "哥伦布",
+    "Palmas": "帕尔马斯",
+    "Paris": "巴黎", "Marseille": "马赛",
+    "Amsterdam": "阿姆斯特丹", "Rotterdam": "鹿特丹",
+    "Tokyo": "东京", "Osaka": "大阪",
+    "Seoul": "首尔", "Taipei": "台北",
+    "Singapore": "新加坡", "Bangkok": "曼谷",
+    "Kuala Lumpur": "吉隆坡", "Jakarta": "雅加达",
+    "Manila": "马尼拉", "Ho Chi Minh City": "胡志明市",
+    "Mumbai": "孟买", "Bangalore": "班加罗尔",
+    "Sydney": "悉尼", "Melbourne": "墨尔本",
+    "Moscow": "莫斯科", "Saint Petersburg": "圣彼得堡",
+    "Dubai": "迪拜", "Istanbul": "伊斯坦布尔",
+    "Warsaw": "华沙", "Prague": "布拉格",
+    "Budapest": "布达佩斯", "Vienna": "维也纳",
+    "Zurich": "苏黎世", "Stockholm": "斯德哥尔摩",
+    "Oslo": "奥斯陆", "Copenhagen": "哥本哈根",
+    "Helsinki": "赫尔辛基", "Dublin": "都柏林",
+    "Brussels": "布鲁塞尔", "Lisbon": "里斯本",
+    "Athens": "雅典", "Bucharest": "布加勒斯特",
+    "Tallinn": "塔林", "Riga": "里加",
+    "Vilnius": "维尔纽斯", "Berlin": "柏林",
+    "Munich": "慕尼黑", "Hamburg": "汉堡",
+    "Dusseldorf": "杜塞尔多夫", "Stuttgart": "斯图加特",
+    "Cologne": "科隆", "Leipzig": "莱比锡",
+    "Dortmund": "多特蒙德", "Essen": "埃森",
+    "Bremen": "不来梅", "Dresden": "德累斯顿",
+    "Hannover": "汉诺威", "Nuremberg": "纽伦堡",
+    "Mannheim": "曼海姆", "Bonn": "波恩",
+    "Muenster": "明斯特", "Karlsruhe": "卡尔斯鲁厄",
+    "Augsburg": "奥格斯堡", "Aachen": "亚琛",
+    "Bielefeld": "比勒费尔德", "Wiesbaden": "威斯巴登",
+    "Freiburg": "弗莱堡", "Mainz": "美因茨",
+    "Heidelberg": "海德堡", "Regensburg": "雷根斯堡",
+    "Ingolstadt": "因戈尔施塔特", "Wuerzburg": "维尔茨堡",
+    "Ulm": "乌尔姆", "Potsdam": "波茨坦",
+    "Erfurt": "埃尔福特", "Kassel": "卡塞尔",
+    "Krefeld": "克雷费尔德", "Moenchengladbach": "门兴格拉德巴赫",
+    "Braunschweig": "不伦瑞克", "Koblenz": "科布伦茨",
+    "Trier": "特里尔", "Jena": "耶拿",
+    "Kiel": "基尔", "Luebeck": "吕贝克",
+    "Rostock": "罗斯托克", "Chemnitz": "开姆尼茨",
+    "Halle": "哈勒", "Magdeburg": "马格德堡",
+    "Gelsenkirchen": "盖尔森基兴", "Solingen": "索林根",
+    "Leverkusen": "勒沃库森", "Oldenburg": "奥尔登堡",
+    "Osnabrueck": "奥斯纳布吕克", "Darmstadt": "达姆施塔特",
+    "Heilbronn": "海尔布隆", "Pforzheim": "普福尔茨海姆",
+    "Wolfsburg": "沃尔夫斯堡", "Goettingen": "哥廷根",
+    "Saarbruecken": "萨尔布吕肯", "Salzgitter": "萨尔茨吉特",
+    "Hildesheim": "希尔德斯海姆", "Kaiserslautern": "凯泽斯劳滕",
+    "Erlangen": "埃尔朗根", "Tuebingen": "蒂宾根",
+    "Bayreuth": "拜罗伊特", "Konstanz": "康斯坦茨",
+    "Bamberg": "班贝格", "Landshut": "兰茨胡特",
+    "Flensburg": "弗伦斯堡", "Cottbus": "科特布斯",
+    "Stralsund": "施特拉尔松德", "Marburg": "马尔堡",
+    "Siegen": "锡根", "Moers": "莫尔斯",
+    "Bergisch Gladbach": "贝尔吉施格拉德巴赫",
+    "Brandenburg": "勃兰登堡", "Dessau": "德绍",
+    "Frankfurt (Oder)": "法兰克福（奥得河畔）",
+    "Weimar": "魏玛", "Gotha": "哥达",
+    "Zwickau": "茨维考", "Greiz": "格赖茨",
+    "Plauen": "普劳恩",
+}
+
+_COUNTRY_CN = {
+    "US": "美国", "CN": "中国", "JP": "日本", "KR": "韩国",
+    "GB": "英国", "DE": "德国", "FR": "法国", "IT": "意大利",
+    "ES": "西班牙", "PT": "葡萄牙", "NL": "荷兰", "BE": "比利时",
+    "CH": "瑞士", "AT": "奥地利", "SE": "瑞典", "NO": "挪威",
+    "DK": "丹麦", "FI": "芬兰", "IE": "爱尔兰", "PL": "波兰",
+    "CZ": "捷克", "SK": "斯洛伐克", "HU": "匈牙利", "RO": "罗马尼亚",
+    "BG": "保加利亚", "GR": "希腊", "TR": "土耳其", "RU": "俄罗斯",
+    "UA": "乌克兰", "SG": "新加坡", "MY": "马来西亚", "ID": "印度尼西亚",
+    "PH": "菲律宾", "TH": "泰国", "VN": "越南", "IN": "印度",
+    "AU": "澳大利亚", "NZ": "新西兰", "BR": "巴西", "AR": "阿根廷",
+    "CA": "加拿大", "MX": "墨西哥", "ZA": "南非", "EG": "埃及",
+    "NG": "尼日利亚", "KE": "肯尼亚", "IL": "以色列", "AE": "阿联酋",
+    "SA": "沙特阿拉伯", "HK": "香港", "TW": "台湾", "MO": "澳门",
+}
+
 
 def _format_csv_line(parts: list[str], do_geo: bool = False) -> str:
     ip = parts[0]
@@ -702,90 +802,6 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         except Exception:
             pass
 
-    _CITY_CN = {
-        "Curitiba": "库里奇巴", "Guaratuba": "瓜拉图巴",
-        "Ji Paraná": "日帕拉纳", "Milan": "米兰",
-        "Frankfurt Am Main": "法兰克福", "Frankfurt": "法兰克福",
-        "London": "伦敦", "City of London": "伦敦",
-        "Manchester": "曼彻斯特",
-        "New York": "纽约", "New York City": "纽约",
-        "Los Angeles": "洛杉矶", "San Francisco": "旧金山",
-        "San Jose": "圣何塞", "San Diego": "圣地亚哥",
-        "Miami": "迈阿密", "Fort Lauderdale": "劳德代尔堡",
-        "Seattle": "西雅图", "Chicago": "芝加哥",
-        "Dallas": "达拉斯", "Houston": "休斯顿",
-        "Atlanta": "亚特兰大", "Denver": "丹佛",
-        "Phoenix": "凤凰城", "Boston": "波士顿",
-        "Philadelphia": "费城", "Portland": "波特兰",
-        "Washington": "华盛顿", "Washington, D.C.": "华盛顿",
-        "Tampa": "坦帕", "Orlando": "奥兰多",
-        "Las Vegas": "拉斯维加斯", "Nashville": "纳什维尔",
-        "Charlotte": "夏洛特", "Austin": "奥斯汀",
-        "Sao Paulo": "圣保罗", "Rio de Janeiro": "里约热内卢",
-        "Brasilia": "巴西利亚", "Colombo": "哥伦布",
-        "Palmas": "帕尔马斯", "Curitiba": "库里奇巴",
-        "Guaratuba": "瓜拉图巴", "Ji Paraná": "日帕拉纳",
-        "Paris": "巴黎", "Marseille": "马赛",
-        "Amsterdam": "阿姆斯特丹", "Rotterdam": "鹿特丹",
-        "Tokyo": "东京", "Osaka": "大阪",
-        "Seoul": "首尔", "Taipei": "台北",
-        "Singapore": "新加坡", "Bangkok": "曼谷",
-        "Kuala Lumpur": "吉隆坡", "Jakarta": "雅加达",
-        "Manila": "马尼拉", "Ho Chi Minh City": "胡志明市",
-        "Mumbai": "孟买", "Bangalore": "班加罗尔",
-        "Sydney": "悉尼", "Melbourne": "墨尔本",
-        "Moscow": "莫斯科", "Saint Petersburg": "圣彼得堡",
-        "Dubai": "迪拜", "Istanbul": "伊斯坦布尔",
-        "Warsaw": "华沙", "Prague": "布拉格",
-        "Budapest": "布达佩斯", "Vienna": "维也纳",
-        "Zurich": "苏黎世", "Stockholm": "斯德哥尔摩",
-        "Oslo": "奥斯陆", "Copenhagen": "哥本哈根",
-        "Helsinki": "赫尔辛基", "Dublin": "都柏林",
-        "Brussels": "布鲁塞尔", "Lisbon": "里斯本",
-        "Athens": "雅典", "Bucharest": "布加勒斯特",
-        "Tallinn": "塔林", "Riga": "里加",
-        "Vilnius": "维尔纽斯", "Berlin": "柏林",
-        "Munich": "慕尼黑", "Hamburg": "汉堡",
-        "Dusseldorf": "杜塞尔多夫", "Stuttgart": "斯图加特",
-        "Cologne": "科隆", "Leipzig": "莱比锡",
-        "Dortmund": "多特蒙德", "Essen": "埃森",
-        "Bremen": "不来梅", "Dresden": "德累斯顿",
-        "Hannover": "汉诺威", "Nuremberg": "纽伦堡",
-        "Mannheim": "曼海姆", "Bonn": "波恩",
-        "Muenster": "明斯特", "Karlsruhe": "卡尔斯鲁厄",
-        "Augsburg": "奥格斯堡", "Aachen": "亚琛",
-        "Bielefeld": "比勒费尔德", "Wiesbaden": "威斯巴登",
-        "Freiburg": "弗莱堡", "Mainz": "美因茨",
-        "Heidelberg": "海德堡", "Regensburg": "雷根斯堡",
-        "Ingolstadt": "因戈尔施塔特", "Wuerzburg": "维尔茨堡",
-        "Ulm": "乌尔姆", "Potsdam": "波茨坦",
-        "Erfurt": "埃尔福特", "Kassel": "卡塞尔",
-        "Krefeld": "克雷费尔德", "Moenchengladbach": "门兴格拉德巴赫",
-        "Braunschweig": "不伦瑞克", "Koblenz": "科布伦茨",
-        "Trier": "特里尔", "Jena": "耶拿",
-        "Kiel": "基尔", "Luebeck": "吕贝克",
-        "Rostock": "罗斯托克", "Chemnitz": "开姆尼茨",
-        "Halle": "哈勒", "Magdeburg": "马格德堡",
-        "Gelsenkirchen": "盖尔森基兴", "Solingen": "索林根",
-        "Leverkusen": "勒沃库森", "Oldenburg": "奥尔登堡",
-        "Osnabrueck": "奥斯纳布吕克", "Darmstadt": "达姆施塔特",
-        "Heilbronn": "海尔布隆", "Pforzheim": "普福尔茨海姆",
-        "Wolfsburg": "沃尔夫斯堡", "Goettingen": "哥廷根",
-        "Saarbruecken": "萨尔布吕肯", "Salzgitter": "萨尔茨吉特",
-        "Hildesheim": "希尔德斯海姆", "Kaiserslautern": "凯泽斯劳滕",
-        "Erlangen": "埃尔朗根", "Tuebingen": "蒂宾根",
-        "Bayreuth": "拜罗伊特", "Konstanz": "康斯坦茨",
-        "Bamberg": "班贝格", "Landshut": "兰茨胡特",
-        "Flensburg": "弗伦斯堡", "Cottbus": "科特布斯",
-        "Stralsund": "施特拉尔松德", "Marburg": "马尔堡",
-        "Siegen": "锡根", "Moers": "莫尔斯",
-        "Bergisch Gladbach": "贝尔吉施格拉德巴赫",
-        "Brandenburg": "勃兰登堡", "Dessau": "德绍",
-        "Frankfurt (Oder)": "法兰克福（奥得河畔）",
-        "Weimar": "魏玛", "Gotha": "哥达",
-        "Zwickau": "茨维考", "Greiz": "格赖茨",
-        "Plauen": "普劳恩",
-    }
     rows: list[tuple[str, str, str, str, str, str]] = []
     _api_cache: dict[str, str] = {}
     for cidr in sorted(all_cidrs):
@@ -893,62 +909,66 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
     for _, dc, country, city, _, _ in rows:
         k = country if country else "N/A"
         country_counts[k] = country_counts.get(k, 0) + 1
-    if country_counts:
-        print()
-        print(c("  地区分布", C.LC))
-        regions_list = sorted(country_counts.items(), key=lambda x: -x[1])
-        for k, cnt in regions_list:
-            n = c(f"  {k}", C.W)
-            print(f"    {n}    {cnt} 段")
-
-        print()
-        ch = _safe_input("  提取某个地区的 CIDR 进行 MCIS 探测？（输入地区名 | 回车跳过）：")
-        if ch.strip():
-            target = ch.strip()
-            _mcis_cidrs = [cidr for cidr, _, country, _, _, _ in rows if target in country]
-            if _mcis_cidrs:
-                print(c(f"  匹配到 {len(_mcis_cidrs)} 个 CIDR", C.G))
-                try:
-                    _mcis_bin = _ensure_mcis_binary()
-                except OSError:
-                    print(c("  [FAIL] MCIS 二进制不可用", C.LR))
-                    sys.exit(0)
-                _result = _run_mcis_process(
-                    _mcis_bin, _mcis_cidrs,
-                    budget=3000, concurrency=200, heads=4, beam=32, top=20, download_top=5,
-                )
-                if _result:
-                    _buffer_text, _result_file = _result
-                    _parsed = _parse_mcis_to_verified(_buffer_text, _result_file)
-                    if _parsed:
-                        _display_rows, _result_lines, _dl_map = _parsed
-                        _verified_file = BASE / "verified.txt"
-                        with open(_verified_file, "w", encoding="utf-8") as f:
-                            f.write(CSV_HEADER + "\n")
-                            for _line in _result_lines:
-                                f.write(_line + "\n")
-                        print(c(f"  结果已保存到 {_verified_file}", C.G))
-                        if _display_rows:
-                            print_sep("-", C.B)
-                            print(c(f"  MCIS 探测结果｜总计获取 {len(_display_rows)} 条", C.LC))
-                            _hdr = ("  " + _pad_cjk("IP 地址", 18, '<') +
-                                    "  " + _pad_cjk("延迟(ms)", 8, '<') +
-                                    "  " + _pad_cjk("速度(MB/s)", 14, '<') +
-                                    "  " + _pad_cjk("地区码", 8, '<') +
-                                    "  " + _pad_cjk("所属网段", 16, '<'))
-                            print(c(_hdr, C.W))
-                            for _i, _row in enumerate(_display_rows[:20]):
-                                _ip, _lat, _spd, _prefix, _colo, _ = _row
-                                _c = C.LG if _i == 0 else (C.LY if _i < 3 else C.W)
-                                print(c(f"  {_pad_cjk(_ip, 18, '<')}  {_pad_cjk(_lat, 8, '>')}  {_pad_cjk(_spd, 14, '>')}  {_pad_cjk(_colo, 8, '<')}  {_pad_cjk(_prefix, 16, '<')}", _c))
-                            if len(_display_rows) > 20:
-                                print(c(f"  ... 共 {len(_display_rows)} 条，详见 verified.txt", C.LY))
-                            if _dl_map:
-                                _dl_ok = sum(1 for v in _dl_map.values() if v["ok"] == "true")
-                                _dl_total = len(_dl_map)
-                                print(c(f"  带宽测速通过率: {_dl_ok}/{_dl_total}", C.G if _dl_ok else C.LY))
-            else:
-                print(c(f"  未匹配到包含「{target}」的 CIDR", C.LR))
+    regions_list = sorted(country_counts.items(), key=lambda x: -x[1])
+    print()
+    print(c("  地区分布", C.LC))
+    for idx, (k, cnt) in enumerate(regions_list, 1):
+        n = c(f"  {idx}. {k}", C.W)
+        print(f"    {n}    {cnt} 段")
+    print()
+    ch = _safe_input(f"  提取地区 CIDR 进行 MCIS 探测（1-{len(regions_list)} | 回车跳过）：")
+    if ch.strip():
+        try:
+            idx = int(ch.strip())
+            if idx < 1 or idx > len(regions_list):
+                raise ValueError
+            target = regions_list[idx - 1][0]
+        except ValueError:
+            print(c("  无效输入", C.LR))
+            sys.exit(0)
+        _mcis_cidrs = [cidr for cidr, _, country, _, _, _ in rows if target in country]
+        if not _mcis_cidrs:
+            sys.exit(0)
+        print(c(f"  匹配到 {len(_mcis_cidrs)} 个 CIDR", C.G))
+        try:
+            _mcis_bin = _ensure_mcis_binary()
+        except OSError:
+            print(c("  [FAIL] MCIS 二进制不可用", C.LR))
+            sys.exit(0)
+        _result = _run_mcis_process(
+            _mcis_bin, _mcis_cidrs,
+            budget=3000, concurrency=200, heads=4, beam=32, top=20, download_top=5,
+        )
+        if _result:
+            _buffer_text, _result_file = _result
+            _parsed = _parse_mcis_to_verified(_buffer_text, _result_file)
+            if _parsed:
+                _display_rows, _result_lines, _dl_map = _parsed
+                _verified_file = BASE / "verified.txt"
+                with open(_verified_file, "w", encoding="utf-8") as f:
+                    f.write(CSV_HEADER + "\n")
+                    for _line in _result_lines:
+                        f.write(_line + "\n")
+                print(c(f"  结果已保存到 {_verified_file}", C.G))
+                if _display_rows:
+                    print_sep("-", C.B)
+                    print(c(f"  MCIS 探测结果｜总计获取 {len(_display_rows)} 条", C.LC))
+                    _hdr = ("  " + _pad_cjk("IP 地址", 18, '<') +
+                            "  " + _pad_cjk("延迟(ms)", 8, '<') +
+                            "  " + _pad_cjk("速度(MB/s)", 14, '<') +
+                            "  " + _pad_cjk("地区码", 8, '<') +
+                            "  " + _pad_cjk("所属网段", 16, '<'))
+                    print(c(_hdr, C.W))
+                    for _i, _row in enumerate(_display_rows[:20]):
+                        _ip, _lat, _spd, _prefix, _colo, _ = _row
+                        _color = C.LG if _i == 0 else (C.LY if _i < 3 else C.W)
+                        print(c(f"  {_pad_cjk(_ip, 18, '<')}  {_pad_cjk(_lat, 8, '>')}  {_pad_cjk(_spd, 14, '>')}  {_pad_cjk(_colo, 8, '<')}  {_pad_cjk(_prefix, 16, '<')}", _color))
+                    if len(_display_rows) > 20:
+                        print(c(f"  ... 共 {len(_display_rows)} 条，详见 verified.txt", C.LY))
+                    if _dl_map:
+                        _dl_ok = sum(1 for v in _dl_map.values() if v["ok"] == "true")
+                        _dl_total = len(_dl_map)
+                        print(c(f"  带宽测速通过率: {_dl_ok}/{_dl_total}", C.G if _dl_ok else C.LY))
     sys.exit(0)
 
 
