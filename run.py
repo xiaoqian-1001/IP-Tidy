@@ -12,7 +12,8 @@ import ipaddress
 import argparse
 import subprocess
 import unicodedata
-import random
+import json
+import urllib.request
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass
@@ -658,6 +659,7 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
     print(c(f"  CIDR 数量: {len(all_cidrs)} 段", C.G))
 
     rows: list[tuple[str, str, str]] = []
+    _api_cache: dict[str, str] = {}
     for cidr in sorted(all_cidrs):
         try:
             net = ipaddress.ip_network(cidr, strict=False)
@@ -671,8 +673,30 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
                 cc = gi.get("country", "")
                 city = gi.get("city", "")
                 regions.add(f"{cc}-{city}" if city else cc)
+        if not regions:
+            try:
+                ck = str(ipaddress.IPv4Network(f"{samples[0]}/24", strict=False))
+            except Exception:
+                ck = ""
+            if ck and ck in _api_cache:
+                regions.add(_api_cache[ck])
             else:
-                regions.add("N/A")
+                try:
+                    req = urllib.request.Request(
+                        f"http://ip-api.com/json/{samples[0]}?fields=countryCode,city",
+                        headers={"User-Agent": "ip-tidy/2.0"},
+                    )
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        _data = json.loads(resp.read().decode("utf-8"))
+                    _cc = _data.get("countryCode", "")
+                    _city = _data.get("city", "")
+                    _label = f"{_cc}-{_city}" if _city else _cc
+                    if _label:
+                        regions.add(_label)
+                        if ck:
+                            _api_cache[ck] = _label
+                except Exception:
+                    pass
         region_str = "、".join(sorted(regions)) if regions else "N/A"
         rows.append((cidr, region_str, f"/{net.prefixlen}"))
     rows.sort(key=lambda r: r[2])
