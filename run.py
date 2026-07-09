@@ -776,7 +776,7 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         "Zwickau": "茨维考", "Greiz": "格赖茨",
         "Plauen": "普劳恩",
     }
-    rows: list[tuple[str, str, str]] = []
+    rows: list[tuple[str, str, str, str, str, str]] = []
     _api_cache: dict[str, str] = {}
     for cidr in sorted(all_cidrs):
         try:
@@ -784,21 +784,33 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         except Exception:
             continue
         samples = sample_ips(cidr, 5)
-        regions: set[str] = set()
+        _dc: str = ""
+        _country: str = ""
+        _city: str = ""
+        _asn_org: str = ""
         for ip in samples:
             gi = geo_lookup(ip)
-            if gi and (gi.get("country_cn") or gi.get("city_cn")):
-                _cc = gi.get("country_cn", "") or gi.get("country", "")
-                _city = gi.get("city_cn", "") or gi.get("city", "")
-                _city = _CITY_CN.get(_city, _city)
-                regions.add(f"{_cc}-{_city}" if _city else _cc)
-        if not regions:
+            if gi:
+                if not _dc:
+                    _dc = gi.get("continent_cn", "")
+                if not _country:
+                    _country = gi.get("country_cn", "") or gi.get("country", "")
+                if not _city:
+                    _city = gi.get("city_cn", "") or gi.get("city", "")
+                    _city = _CITY_CN.get(_city, _city)
+                if not _asn_org:
+                    _asn = gi.get("asn", "")
+                    _isp = gi.get("isp", "")
+                    _asn_org = f"{_asn} {_isp}".strip() if _asn or _isp else ""
+            if _dc and _country and _city and _asn_org:
+                break
+        if not _country:
             try:
                 ck = str(ipaddress.IPv4Network(f"{samples[0]}/24", strict=False))
             except Exception:
                 ck = ""
             if ck and ck in _api_cache:
-                regions.add(_api_cache[ck])
+                _country = _api_cache[ck]
             else:
                 try:
                     req = urllib.request.Request(
@@ -810,38 +822,48 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
                     _cc = _COUNTRY_CN.get(_data.get("countryCode", "").upper())
                     if not _cc:
                         _cc = _COUNTRY_CN.get(_data.get("country", ""), _data.get("country", ""))
-                    _city = _CITY_CN.get(_data.get("city", ""), _data.get("city", ""))
-                    _label = f"{_cc}-{_city}" if _city else _cc
-                    if _label:
-                        regions.add(_label)
+                    _city_api = _CITY_CN.get(_data.get("city", ""), _data.get("city", ""))
+                    _country = f"{_cc}-{_city_api}" if _city_api else _cc
+                    if _country:
+                        _city = _city_api
                         if ck:
-                            _api_cache[ck] = _label
+                            _api_cache[ck] = _country
                 except Exception:
                     pass
-        region_str = "、".join(sorted(regions)) if regions else "N/A"
-        rows.append((cidr, region_str, f"/{net.prefixlen}"))
-    rows.sort(key=lambda r: r[2])
+        prefix = f"/{net.prefixlen}"
+        rows.append((cidr, _dc, _country, _city, _asn_org, prefix))
+    rows.sort(key=lambda r: r[5])
 
     print_sep("-", C.B)
     print(c("  Local-IP 查询结果", C.LC))
-    hdr = ("  " + _pad_cjk("网段", 20, '<') + "  " + _pad_cjk("前缀", 8, '<') +
-           "  " + _pad_cjk("地区", 24, '<'))
+    hdr = ("  " + _pad_cjk("网段", 20, '<') + "  " + _pad_cjk("数据中心", 14, '<') +
+           "  " + _pad_cjk("地区", 12, '<') + "  " + _pad_cjk("城市", 16, '<') +
+           "  " + _pad_cjk("ASN组织", 30, '<'))
     print(c(hdr, C.W))
-    for cidr, region, prefix in rows:
-        print("  " + _pad_cjk(cidr, 20, '<') + "  " + _pad_cjk(prefix, 8, '<') +
-              "  " + _pad_cjk(region, 24, '<'))
+    for cidr, dc, country, city, asn_org, prefix in rows:
+        print("  " + _pad_cjk(cidr, 20, '<') + "  " + _pad_cjk(dc, 14, '<') +
+              "  " + _pad_cjk(country, 12, '<') + "  " + _pad_cjk(city, 16, '<') +
+              "  " + _pad_cjk(asn_org, 30, '<'))
 
-    region_counts: dict[str, int] = {}
-    for _, region, _ in rows:
-        for r in region.split("、"):
-            r = r.strip()
-            if r and r != "N/A":
-                region_counts[r] = region_counts.get(r, 0) + 1
-    if region_counts:
-        print("\n  地区分布:", end="")
-        for region, cnt in sorted(region_counts.items(), key=lambda x: -x[1])[:10]:
-            print(c(f"  {region}({cnt})", C.LG if cnt > 1 else C.W), end="")
+    country_counts: dict[str, int] = {}
+    for _, dc, country, city, _, _ in rows:
+        k = country if country else "N/A"
+        country_counts[k] = country_counts.get(k, 0) + 1
+    if country_counts:
         print()
+        print(c("  地区分布", C.LC))
+        for k, cnt in sorted(country_counts.items(), key=lambda x: -x[1]):
+            n = c(f"  {k}", C.W)
+            print(f"    {n}    {cnt} 段")
+
+    dc_counts: dict[str, int] = {}
+    for _, dc, _, _, _, _ in rows:
+        if dc:
+            dc_counts[dc] = dc_counts.get(dc, 0) + 1
+    if dc_counts:
+        print(c("  数据中心分布", C.LC))
+        for k, cnt in sorted(dc_counts.items(), key=lambda x: -x[1]):
+            print(f"    {k}    {cnt} 段")
     sys.exit(0)
 
 
