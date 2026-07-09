@@ -797,12 +797,14 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
                     _country = gi.get("country_cn", "") or gi.get("country", "")
                 if not _city:
                     _city = gi.get("city_cn", "") or gi.get("city", "")
-                    _city = _CITY_CN.get(_city, _city)
+                    _city = _CITY_CN.get(_city, _city) or _city
                 if not _asn_org:
                     _asn = gi.get("asn", "")
                     _isp = gi.get("isp", "")
-                    _asn_org = f"{_asn} {_isp}".strip() if _asn or _isp else ""
-            if _dc and _country and _city and _asn_org:
+                    if _asn or _isp:
+                        _asn_org = f"{_asn} {_isp}".strip()
+                        _asn_org = _asn_org.replace("AS ", "AS")
+            if _country and _city and _asn_org:
                 break
         if not _country:
             try:
@@ -822,12 +824,13 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
                     _cc = _COUNTRY_CN.get(_data.get("countryCode", "").upper())
                     if not _cc:
                         _cc = _COUNTRY_CN.get(_data.get("country", ""), _data.get("country", ""))
-                    _city_api = _CITY_CN.get(_data.get("city", ""), _data.get("city", ""))
-                    _country = f"{_cc}-{_city_api}" if _city_api else _cc
-                    if _country:
-                        _city = _city_api
+                    if _cc:
+                        _country = _cc
+                        if not _city:
+                            _city = _CITY_CN.get(_data.get("city", ""), _data.get("city", ""))
+                        _label = _country
                         if ck:
-                            _api_cache[ck] = _country
+                            _api_cache[ck] = _label
                 except Exception:
                     pass
         prefix = f"/{net.prefixlen}"
