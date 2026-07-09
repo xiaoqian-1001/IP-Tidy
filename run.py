@@ -1780,7 +1780,7 @@ def _trace_route(ip: str, timeout: int = 18) -> str:
     if rt:
         return rt
     if asns:
-        return "--｜骨干网｜普通"
+        return "非精品线路｜普通｜骨干网"
     return "待检测"
 
 
