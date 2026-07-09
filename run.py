@@ -697,6 +697,7 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         for region, cnt in sorted(region_counts.items(), key=lambda x: -x[1])[:10]:
             print(c(f"  {region}({cnt})", C.LG if cnt > 1 else C.W), end="")
         print()
+    sys.exit(0)
 
 
 def _build_steps(a, cfg, asns: list[str], v4_cidrs: list[str],
