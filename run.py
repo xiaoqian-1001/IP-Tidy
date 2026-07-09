@@ -698,12 +698,12 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
             else:
                 try:
                     req = urllib.request.Request(
-                        f"http://ip-api.com/json/{samples[0]}?fields=country,city&lang=zh-CN",
+                        f"http://ip-api.com/json/{samples[0]}?fields=countryCode,city&lang=zh-CN",
                         headers={"User-Agent": "ip-tidy/2.0"},
                     )
                     with urllib.request.urlopen(req, timeout=5) as resp:
                         _data = json.loads(resp.read().decode("utf-8"))
-                    _cc = _data.get("country", "")
+                    _cc = _COUNTRY_CN.get(_data.get("countryCode", "").upper(), _data.get("countryCode", ""))
                     _city = _data.get("city", "")
                     _label = f"{_cc}-{_city}" if _city else _cc
                     if _label:
