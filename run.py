@@ -899,15 +899,6 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
         for k, cnt in sorted(country_counts.items(), key=lambda x: -x[1]):
             n = c(f"  {k}", C.W)
             print(f"    {n}    {cnt} 段")
-
-    dc_counts: dict[str, int] = {}
-    for _, dc, _, _, _, _ in rows:
-        if dc:
-            dc_counts[dc] = dc_counts.get(dc, 0) + 1
-    if dc_counts:
-        print(c("  数据中心分布", C.LC))
-        for k, cnt in sorted(dc_counts.items(), key=lambda x: -x[1]):
-            print(f"    {k}    {cnt} 段")
     sys.exit(0)
 
 
