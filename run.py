@@ -813,13 +813,12 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
     print_step("Local IP 信息查询")
     all_cidrs = list(v4_cidrs)
     if asns:
-        print(c("  正在解析 ASN...", C.CY))
         all_cidrs.extend(c for c in resolve_asn_cidrs(asns, list(v4_cidrs)) if ":" not in c)
     all_cidrs = list(dict.fromkeys(all_cidrs))
     if not all_cidrs:
         print(c("  [FAIL] 无可用 CIDR", C.LR))
         return
-    print(c(f"  CIDR 数量: {len(all_cidrs)} 段", C.G))
+    print(c(f"  [ASN] 解析完成 | CIDR 数量：{len(all_cidrs)} 段", C.G))
     if not geo_available():
         print(c("  MaxMind 数据库缺失，尝试自动下载...", C.CY))
         _ensure_geolite2_files()
