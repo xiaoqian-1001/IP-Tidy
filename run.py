@@ -919,7 +919,10 @@ def _local_ip_query(asns: list[str], v4_cidrs: list[str]) -> None:
            "  " + _pad_cjk("地区", 12, '<') + "  " + _pad_cjk("城市", 16, '<') +
            "  " + _pad_cjk("ASN组织", 30, '<'))
     print(c(hdr, C.W))
-    for cidr, dc, country, city, asn_org, prefix in rows:
+    for i, (cidr, dc, country, city, asn_org, prefix) in enumerate(rows):
+        if i >= 10:
+            print(c(f"  ... 共 {len(rows)} 段，仅展示前 10 条", C.LY))
+            break
         print("  " + _pad_cjk(cidr, 20, '<') + "  " + _pad_cjk(dc, 14, '<') +
               "  " + _pad_cjk(country, 12, '<') + "  " + _pad_cjk(city, 16, '<') +
               "  " + _pad_cjk(asn_org, 30, '<'))
