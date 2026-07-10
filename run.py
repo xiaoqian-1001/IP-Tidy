@@ -2469,6 +2469,7 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
         with open(verified_file, encoding="utf-8") as f:
             lines = f.readlines()
         if len(lines) > 1:
+            print(f"  通过 IP: {len(lines) - 1} 条")
             print()
             print_step("路由追踪结果")
             header = c("  " + _pad_cjk("IP 地址", 18, '<') + "  "
@@ -2480,11 +2481,11 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
             print(header)
             for line in lines[1:]:
                 parts = line.strip().split(",")
-                if len(parts) < 12:
+                if len(parts) < 10:
                     continue
                 ip = parts[0]
-                latency = parts[10] if len(parts) > 10 else "-"
-                colo_code = parts[8] if len(parts) > 8 else "-"
+                latency = parts[6] if len(parts) > 6 and parts[6].strip() else "-"
+                colo_code = parts[3] if len(parts) > 3 else "-"
                 route_label = route_map.get(ip)
                 if not route_label or route_label == "待检测":
                     try:
@@ -2500,7 +2501,7 @@ def step_route_trace_discovery(cfg: ScannerConfig, asns: list[str],
                 except Exception:
                     pass
                 try:
-                    _speed_val = float(parts[11]) if len(parts) > 11 and parts[11].strip() else None
+                    _speed_val = float(parts[7]) if len(parts) > 7 and parts[7].strip() else None
                 except (ValueError, IndexError):
                     _speed_val = None
                 _spd = f"{_speed_val:.2f}" if _speed_val is not None else "-"
