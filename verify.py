@@ -10,6 +10,10 @@ import os
 import sys
 import time
 import threading
+import random
+import string
+import ssl
+import socket
 import urllib.request
 import urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -25,7 +29,27 @@ RETRY_CODES = frozenset({429, 502, 503, 504})
 _write_lock = threading.Lock()
 
 
-def _check_one(ip_port: str, api_url: str) -> Optional[str]:
+def _check_honeypot(ip: str, port: int, timeout: float = 5.0) -> bool:
+    """用随机垃圾 SNI 握手，若仍返回 CF 头 → 蜜罐"""
+    random_sni = "".join(random.choices(string.ascii_lowercase, k=10)) + ".org"
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    try:
+        sock = socket.create_connection((ip, port), timeout=timeout)
+        with ctx.wrap_socket(sock, server_hostname=random_sni) as ssock:
+            ssock.settimeout(timeout)
+            req = f"GET / HTTP/1.1\r\nHost: {random_sni}\r\nConnection: close\r\n\r\n"
+            ssock.sendall(req.encode())
+            resp = ssock.read(1024).decode("utf-8", errors="ignore").lower()
+            if "server: cloudflare" in resp or "cf-ray" in resp:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _check_one(ip_port: str, api_url: str, honeypot_check: bool = True) -> Optional[str]:
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Accept": "application/json",
@@ -70,6 +94,8 @@ def _check_one(ip_port: str, api_url: str) -> Optional[str]:
             api_latency = data.get("responseTime", "")
 
         ip, port = ip_port.rsplit(":", 1)
+        if honeypot_check and _check_honeypot(ip, int(port)):
+            return None
         proto = "IPv6" if ":" in ip else "IPv4"
         return f"{ip},{port},TRUE,{colo},{country},{region},{api_latency},,AS{asn},{proto}"
     return None
@@ -102,6 +128,8 @@ def main() -> None:
                         help="追加模式（不覆盖已有结果）")
     parser.add_argument("--follow", action="store_true",
                         help="流式模式（从 stdin 读取，EOF 为结束）")
+    parser.add_argument("--honeypot-check", default=True, action=argparse.BooleanOptionalAction,
+                        help="反蜜罐检测：随机 SNI 验证 (默认开启)")
     args = parser.parse_args()
 
     if args.follow:
@@ -126,7 +154,7 @@ def main() -> None:
         with ThreadPoolExecutor(max_workers=args.concurrent) as ex:
             for i in range(0, total, args.chunk):
                 chunk = lines[i:i + args.chunk]
-                futures = [ex.submit(_check_one, ip, args.api) for ip in chunk]
+                futures = [ex.submit(_check_one, ip, args.api, args.honeypot_check) for ip in chunk]
                 for f in as_completed(futures):
                     try:
                         r = f.result()
